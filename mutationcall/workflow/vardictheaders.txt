@@ -1,0 +1,34 @@
+Sample	sample name
+Gene	gene name from a BED file
+Chr	chromosome name
+Start	start position of the variation
+End	end position of the variation
+Ref	reference sequence
+Alt	variant sequence
+Depth	total coverage
+AltDepth	variant coverage
+RefFwdReads	reference forward strand coverage
+RefRevReads	reference reverse strand coverage
+AltFwdReads	variant forward strand coverage
+AltRevReads	variant reverse strand coverage
+Genotype	genotype description string
+AF	allele frequency
+Bias	strand bias flag
+PMean	mean position in read
+PStd	flag for read position standard deviation
+QMean	mean base quality
+QStd	flag for base quality standard deviation
+QRATIO	ratio of high quality reads to low-quality reads
+HIFREQ	variant frequency for high-quality reads
+EXTRAFR	Adjusted AF for indels due to local realignment
+SHIFT3	No. of bases to be shifted to 3 prime for deletions due to alternative alignment
+MSI	MicroSattelite. > 1 indicates MSI
+MSINT	MicroSattelite unit length in bp
+NM	average number of mismatches for reads containing the variant
+HICNT	number of high-quality reads with the variant
+HICOV	position coverage by high quality reads
+uknowncol	one colinfomissing couldbeone of the above
+5pFlankSeq	neighboring reference sequence to 5 end
+3pFlankSeq	neighboring reference sequence to 3 end
+SEGMENT:CHR_START_END	position description
+VARTYPE	variant type

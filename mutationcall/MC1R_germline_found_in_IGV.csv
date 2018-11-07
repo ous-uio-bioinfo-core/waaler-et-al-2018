@@ -1,0 +1,12 @@
+cell_line,Gene,AAchange,AN_ExonicFunc.refGene
+WM1366,MC1R,R160W,nonsynonymous SNV
+WM115,MC1R,R160W,nonsynonymous SNV
+A375,MC1R,R151C,nonsynonymous SNV
+MeWo,MC1R,R160W,nonsynonymous SNV
+WM852,MC1R,R160W,nonsynonymous SNV
+WM239,MC1R,R160W,nonsynonymous SNV
+WM266,MC1R,R160W,nonsynonymous SNV
+WM9,MC1R,R151C_R160,nonsynonymous SNV
+Skmel28,MC1R,I155T,nonsynonymous SNV
+LOX,MC1R,R160W,nonsynonymous SNV
+FemxV,MC1R,R151C,nonsynonymous SNV

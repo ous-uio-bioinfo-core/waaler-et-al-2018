@@ -1,0 +1,591 @@
+---
+title: "DEG analysis and plots"
+author: "Vegard Nygaard"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+knit: (function(inputFile, encoding) { rmarkdown::render("DEG_analysis_mouse.rmd", encoding="UTF8", output_file=paste0( "DEG_analysis_mouse_", Sys.Date(),".html")) })
+---
+
+<style>
+  .main-container {
+    max-width: 2000px !important;
+  }
+</style>
+
+<br/>
+Analysis of RNASeq from 12 mouse samples. There are 4 different treatments done in triplicates. The starting point is the same mouse cell line.
+<br/>
+<br/>
+The 12 RNASeq samples have been quantified using [kallisto](https://pachterlab.github.io/kallisto/). In this report, the data will be analysis with the aim to find genes that are affected by the treatment, and see which samples have a more similar effect. In addition some handy sample_vs_genes matrices will be written out.
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+options(width = 1000)
+starttime = Sys.time()
+library(sleuth)
+library(tidyverse)
+library(knitr)
+library(NMF)
+library(limma)
+nmf.options(grid.patch=TRUE)
+set.seed(100)
+
+# setwd("~prosjekter/rprojects/krauss")
+
+ds = Sys.Date()
+usesavedobjects = FALSE
+outputdir = paste("output_sleuth_mouse_", ds, sep="")
+if(!file.exists(outputdir))dir.create(outputdir)
+postfix=".csv"
+
+library(kableExtra)
+debug=FALSE
+
+add = 0.1 # workaround to deal with zeros in log and division.
+
+```
+
+```{r readsa}
+
+# special genes
+wntgenes = c("AXIN2", "TCF7")
+hippogenes = c("AMOTL2", "CTGF", "CYR61")
+notchgenes = c("HEY1", "HEY2")
+focusgenes = c(wntgenes, hippogenes, notchgenes)
+
+sa = read.csv("sa_mouse.csv", stringsAsFactors = FALSE)
+sa  = sa %>%
+	dplyr::rename(sample=sample_name) %>%
+	mutate(path=paste0("not_in_github/kallistooutput/", sample)) %>%
+	#mutate(sample_colname=make.names(sample)) %>%
+	#mutate(cell_line_safename = make.names(cell_line)) %>%
+	arrange(cell_line, treatment)
+
+kable(sa, caption="Sample annotation")
+
+```
+
+The cell line was given 4 different treatments, DMSO, G007LK, WNT, WNT_G007LK, in triplicates. 
+
+<br/>
+<br/>
+
+##Difference between groups/treatment
+
+I will use the [sleuth](https://pachterlab.github.io/sleuth/) program to find differentially expressed transcripts and genes.
+<br/>
+Sleuth is made by the same group that made kallisto and it is designed to make use of the "bootstrap" output from kallisto in order to better account for the uncertainty in the measurements.
+<br/><br/>
+ I will loosely follow the tutorial here : https://pachterlab.github.io/sleuth_walkthroughs/trapnell/analysis.html <br/>
+
+```{r readkallistooutput}
+
+
+
+if(usesavedobjects)
+{
+	#so_transcript = readRDS("not_in_github/so_transcript.rds")
+	#t2g <- readRDS("not_in_github/t2g.rds")
+	so_gene = readRDS("not_in_github/so_gene.rds")
+}else{
+	
+	library(biomaRt)
+	mart <- useMart(biomart = "ensembl", dataset = "mmusculus_gene_ensembl")
+	t2g <- biomaRt::getBM(attributes = c("ensembl_transcript_id", "ensembl_gene_id",
+																		 "external_gene_name"), mart = mart)
+	# write.csv(t2g, file="biomart_ensembl.csv")
+	t2g <- dplyr::rename(t2g, target_id = ensembl_transcript_id,
+										 ens_gene = ensembl_gene_id, ext_gene = external_gene_name)
+	t2g$ext_gene = toupper(t2g$ext_gene) # in order to map to human specialgenes
+	saveRDS(t2g, "not_in_github/t2g.rds")
+	# per transcript
+	#so_transcript <- sleuth_prep(sa,  target_mapping = t2g)
+	#saveRDS(so_transcript, "not_in_github/so_transcript.rds")
+	# sum per gene
+	
+	so_gene <- sleuth_prep(sa, target_mapping = t2g,
+									aggregation_column = 'ens_gene')
+	saveRDS(so_gene, "not_in_github/so_gene.rds")
+}
+```
+
+<br/>
+<br/>
+
+##Output of matrixes 
+
+I will write out a few matrices of the data without any test for differentially expressed genes. The files will be in the `r outputdir` folder.
+
+<br/>
+<br/>
+
+
+Sample vs gene in TPM.
+
+```{r sample_vs_gene}
+
+# write sample_vs_gene
+# sleuth_to_matrix returns columns in random order!!
+df_matrix = sleuth_to_matrix(so_gene, which_df="obs_norm",  which_units="tpm")$data
+# so_gene$sample_to_covariates$sample %in% colnames(df_matrix)
+# colnames(df_matrix) %in% so_gene$sample_to_covariates$sample
+df_matrix = df_matrix[, so_gene$sample_to_covariates$sample]
+tpm_annot = data.frame(gene_id=row.names(df_matrix),
+											 symbol=so_gene$target_mapping$ext_gene[match(row.names(df_matrix),so_gene$target_mapping$ens_gene)],
+											 stringsAsFactors=FALSE)
+df_gene_per_replicate = cbind(tpm_annot, df_matrix, stringsAsFactors=FALSE)
+write.csv(df_gene_per_replicate, file=paste0(outputdir, "/mouse_sample_vs_gene_tpm_per_replicate_", ds, ".csv"), row.names=FALSE)
+
+
+df_gene_tmp = cbind(tpm_annot, avearrays(df_matrix, so_gene$sample_to_covariates$treatment), stringsAsFactors=FALSE)
+write.csv(df_gene_tmp, file=paste0(outputdir, "/mouse_sample_vs_gene_tpm_", ds, ".csv"), row.names=FALSE)
+
+### and also for counts, not sum up the 3 samples
+countmat = sleuth_to_matrix(so_gene, which_df="obs_raw",  which_units="est_counts")$data # for some reason the full transcript data is used here, not just gene summaries
+countmatannot = tibble(target_id=rownames(countmat)) %>%
+	left_join(so_gene$target_mapping) %>%
+	replace(., is.na(.), "")
+countmat = countmat[, sa$sample]
+df_gene_count = as_tibble(countmat) %>%
+	mutate(ens_gene = countmatannot$ens_gene) %>%
+	tidyr::gather(sample, value, -ens_gene) %>%
+	group_by(sample,ens_gene) %>%
+	summarise(genecount = sum(value) ) %>%
+	tidyr::spread(sample, genecount) %>%
+	dplyr::filter(ens_gene != "")  %>%
+	rename(gene_id = ens_gene)   %>%
+	left_join(df_gene_tmp[,c("gene_id", "symbol")]) %>%
+	dplyr::select(gene_id, symbol,  everything() )
+
+df_gene_count %>% write_csv(path=paste0(outputdir, "/mouse_sample_vs_gene_count_", ds, ".csv"))
+
+
+```
+
+<br/>
+<br>
+
+Sample vs gene change treated/baseline in log2. 
+
+The cell-line was given several combinations of treatments so 4 version of treated vs .untreated are considered:
+
+```{r treat2baseline}
+
+treat2baseline = data.frame(treatment = c("G007LK", "WNT", "WNT_G007LK", "WNT_G007LK"),
+														baseline = c("DMSO", "DMSO", "DMSO", "WNT"))
+treat2baseline$comparison = paste0(treat2baseline$treatment,"_vs_", treat2baseline$baseline)
+kable(treat2baseline)
+```
+
+Since we do seem to have a replicate/batch effect we should compare each replicate with its own baseline, i.e G007LK.1/DMSO.1, G007LK.2/DMSO.2 ... and so on, creating 12 treatment effect measurements for each gene.
+
+```{r change}
+
+# compute change per cell line after treatment
+# A.	007/ctrl (DMSO) - mimikkerer ”WNT”-IKKE-aktiverte celler
+# B.	WNT+007/WNT  - mimikkerer ”WNT”-aktiverte celler
+# Og i tillegg (som muligens er mindre relevant og kan gjøres parallelt i egne plot)
+# C.	WNT/ctrl
+# D.	WNT+007/WNT
+
+df_change_per_replicate_list=list()
+df_change_mean_list=list()
+
+for(i in 1:nrow(treat2baseline))
+{
+	treatment = treat2baseline[i, "treatment"]
+	baseline = treat2baseline[i, "baseline"]
+	#### NB in an earlier version I added add here to the TPM data, but I did not for the human data.
+	### better to to this only for the change data
+	treatmat = as.matrix(df_gene_per_replicate[,(sa$sample[sa$treatment==treatment])])
+	basetmat = as.matrix(df_gene_per_replicate[,(sa$sample[sa$treatment==baseline])])
+	changetab =log2( (treatmat+add) / (basetmat+add))
+	colnames(changetab) = paste0(colnames(treatmat), "_vs_" ,colnames(basetmat), "_change")
+	
+	sumtab = treatmat + basetmat
+	colnames(sumtab) = paste0(colnames(treatmat), "_vs_" ,colnames(basetmat), "_sumTPM")
+	
+	tmp_change = cbind(changetab, sumtab)
+	tmp_change = tmp_change[, order(colnames(tmp_change))]
+	df_change_per_replicate_list[[i]] = tmp_change
+	
+	df_change_mean_list[[i]] = data.frame(rowSums(changetab)/ncol(changetab),rowSums(sumtab)/ncol(sumtab))
+	names(df_change_mean_list[[i]]) = c( paste0(treatment, "_vs_" ,baseline, "_change"),
+																			 paste0(treatment, "_vs_" ,baseline, "_sumTPM") )
+
+	
+}
+
+df_change_per_replicate = do.call("cbind", df_change_per_replicate_list)
+
+df_annot = data.frame(gene_id=row.names(df_change_per_replicate),
+											symbol=so_gene$target_mapping$ext_gene[match(row.names(df_change_per_replicate), so_gene$target_mapping$ens_gene)]
+											)
+df_change_per_replicate = cbind(df_annot  ,df_change_per_replicate)
+write.csv(df_change_per_replicate, file=paste0(outputdir, "/mouse_sample_vs_gene_tpm_log2change_per_replicate_", ds ,".csv"), row.names=FALSE)
+
+df_change_mean = do.call("cbind", df_change_mean_list)
+df_change_mean = cbind(df_annot  ,df_change_mean)
+write.csv(df_change_mean, file=paste0(outputdir, "/mouse_sample_vs_gene_tpm_log2change_mean_", ds ,".csv"), row.names=FALSE)
+
+pdf(file=paste0(outputdir, "/MA_plots_mouse.pdf"))
+for(comp in treat2baseline$comparison)
+{
+	#celllinesafe = make.names(cellline)
+	xname = paste0(comp, "_sumTPM")
+	yname = paste0(comp, "_change")
+	nlim = 1:100
+	plot(log2(df_change_mean[, xname]+add)/2, df_change_mean[, yname],
+			 xlab="Mean TPM in log2",
+			 ylab="TPM fold change in log2",
+			 main=paste0("Mouse cell line, ", comp),
+			 pch=".")
+}
+kast=dev.off()
+
+
+
+```
+
+
+For the change-tab I added `r add` to every number as a quick workaround for the problem with log and division with zeros.
+
+<br/>
+<br/>
+
+
+## Clustring of samples
+
+The relation of the samples may be assessed with different clustering tools. A PCA plot using all values that survived sleuths default filter (more than 5 reads in at least half the samples).
+
+```{r pca1, fig.height=15, fig.width=15}
+
+plot_pca(so_gene, color_by = 'treatment', text_labels=TRUE, use_filtered=TRUE, units="scaled_reads_per_base")
+#plot_pca(so_transcript, color_by = 'treatment', text_labels=TRUE, use_filtered=FALSE)
+
+# Not able to run plot_transcript_heatmap, not documentet.
+#ids = so_gene$target_mapping$target_id[1:100]
+#p = plot_transcript_heatmap(so_gene, ids) 
+
+
+```
+
+The samples cluster by replicate number. This only makes sense if there is a systematic difference between the replicates, intended as in different dosage or as a batch effect if they were processed separately.
+
+
+<br/>
+<br/>
+
+One can make a hierarchical cluster of the same (dendrogram).
+
+```{r plot_hclust_global}
+
+mat_gene = as.matrix(df_gene_per_replicate[, -c(1,2)])
+rownames(mat_gene) = df_gene_per_replicate$symbol
+
+mat_gene = log2(mat_gene+1)
+rsums = rowSums(mat_gene)
+
+aheatmap(mat_gene[rsums>0,],  Colv=T, Rowv=T, 
+				 na.color="black",
+				 color = colorRampPalette(c("green", "black", "red"), bias=1, space="rgb")(n = 50),
+				 annCol = sa[ match(colnames(mat_gene),sa$sample) , c("treatment", "replicate")],
+				 #annColors=list(cancer=ribboncolors),
+				 main=paste("Clustered by expression",sep=""),border_color=NA, 
+				 cellheight=0.0001, 
+				 legend=NA)
+
+
+
+```
+
+Still the samples cluster by replicate number and not by treatment as expected. It may be all weakly expressed genes that are effected by the same batch effect, so the next cluster uses only strong genes (top 1% quantile total expression).
+
+```{r plot_hclust_global2}
+
+
+cutoff=quantile(rsums, 0.99)
+
+aheatmap(mat_gene[rsums>cutoff,],  Colv=T, Rowv=T, 
+				 na.color="black",
+				 color = colorRampPalette(c("green", "black", "red"), bias=1, space="rgb")(n = 50),
+				 annCol = sa[ match(colnames(mat_gene),sa$sample) , c("treatment", "replicate")],
+				 #annColors=list(cancer=ribboncolors),
+				 main=paste("Strong genes clustered by expression",sep=""),border_color=NA, 
+				 #cellheight=0.0001, 
+				 cellheight=0.001, 
+				 legend=NA)
+
+```
+
+However, the samples still cluster by replicate.
+
+<br/>
+<br/>
+There are a few genes of special interest, the "WNT-genes", `r paste0(wntgenes, collapse=",")` and the "hippo-genes", `r paste0(hippogenes, collapse=",")`.
+The clustering can be done using only these genes.
+
+
+```{r plot_hclust_global3}
+aheatmap(mat_gene[focusgenes,],  Colv=T, Rowv=T, 
+				 na.color="black",
+				 color = colorRampPalette(c("green", "black", "red"), bias=1, space="rgb")(n = 50),
+				 annCol = sa[ match(colnames(mat_gene),sa$sample) , c("treatment", "replicate")],
+				 #annColors=list(cancer=ribboncolors),
+				 main=paste("Hippo and WNT genes clustered by expression",sep=""),border_color=NA, 
+				 #cellheight=0.0001, 
+				 cellheight=15, 
+				 legend=NA)
+
+
+```
+
+I am not sure what to make of this.
+
+<br/>
+<br/>
+
+The interesting genes can be inspected in other plots as well.
+
+```{r plot_interesting_genes}
+
+
+# df_gene_per_replicate$symbol = toupper(df_gene_per_replicate$symbol)
+focusdf = df_gene_per_replicate[df_gene_per_replicate$symbol %in% focusgenes, ] %>%
+	mutate(symbol = factor(symbol, levels=focusgenes)) %>%
+	gather(sample, TPM, -gene_id, -symbol) %>%
+#	gather(sample_colname, TPM, -gene_id, -symbol) %>%
+#	left_join(sa[,c("sample_colname", "replicate", "treatment")])
+	#mutate(TPM = TPM + add) %>%
+	left_join(sa[,c("sample", "replicate", "treatment")])
+
+
+ggplot(focusdf, aes(y=TPM, x=treatment, colour=replicate, group=replicate)) +
+	geom_line() +
+	#scale_y_continuous(trans='log2') +
+	theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+	facet_wrap(~symbol, scale="free_y")
+
+
+```
+
+TPM is Transcript per million. The y-axis number is still in TPM, but is not the fixed for every plot.
+<br/>
+Below is the actual TPM values. The expression vary between genes and cell lines.
+
+```{r plot_interesting_genes_table}
+
+focusdf %>% 
+	dplyr::select(TPM, replicate, symbol,treatment) %>%
+	tidyr::spread(treatment, TPM) %>%
+	dplyr::select(-symbol, symbol) %>%
+	arrange(symbol) %>%
+	kable(digits=1)
+
+```
+
+<br/>
+<br/>
+
+Instead of cluster all samples by absolute expression, it could be useful to cluster by change in expression following treatment. 
+We have 4 different treatment/baseline combinations.
+
+```{r hclust1, fig.height=8, comment=FALSE}
+
+
+
+focusindexes = df_change_per_replicate$symbol %in% focusgenes
+special_expression_tab = as.data.frame( df_change_per_replicate[focusindexes,grepl("change", colnames(df_change_per_replicate))] )
+#special_expression_tab[sumtpmtab[focusindexes,]<5] = NA
+#special_expression_tab = special_expression_tab[order(match(rownames(special_expression_tab), focusgenes)),]
+rownames(special_expression_tab) = df_change_per_replicate$symbol[focusindexes]
+
+special_expression_tab = special_expression_tab[match(focusgenes,rownames(special_expression_tab)) , ]
+# special_expression_tab["wntgenes",] = colSums(special_expression_tab[wntgenes,])/length(wntgenes)
+special_expression_tab["wntgenes",] = apply(special_expression_tab[wntgenes,], MARGIN=2, FUN=mean, na.rm=TRUE)
+special_expression_tab["hippogenes",] = apply(special_expression_tab[hippogenes,], MARGIN=2, FUN=mean, na.rm=TRUE)
+special_expression_tab["notchgenes",] = apply(special_expression_tab[notchgenes,], MARGIN=2, FUN=mean, na.rm=TRUE)
+
+
+strong=rowSums(df_change_per_replicate[, grepl("sumTPM", colnames(df_change_per_replicate))] > 100) > 8
+tmp = df_change_per_replicate[strong & !focusindexes,grepl("change", colnames(df_change_per_replicate))]
+#colnames(tmp) = gsub(".change", "", colnames(tmp))
+
+
+#anntab = sa[ match(colnames(tmp), sa$sample_colname)  , c("treatment", "replicate"), drop=FALSE] 
+anntab =  t(special_expression_tab[c("wntgenes","hippogenes", "notchgenes"),]) 
+
+#pdf(paste(outputdir,"/hclust_strong_genes_mouse.pdf", sep=""), height=16)
+aheatmap(tmp,  Colv=T, Rowv=T, 
+				 na.color="black",
+				 color = colorRampPalette(c("green", "black", "red"), bias=1, space="rgb")(n = 50),
+				 annCol = anntab[,],
+				 #annColors=list(cancer=ribboncolors),
+				 main=paste("Clustered by log2 change in expression after treatment",sep=""),border_color=NA, 
+				 cellheight=0.0001, 
+				 legend=NA)
+#tullball=dev.off()
+```
+
+
+The dendrogram was made using genes that were expressed in most samples, (`r nrow(tmp)` genes). All data used are change in expression i.e log2 of treatment vs baseline for each cell line and gene. The heatmap for the data points are not presented. . Be aware that a complete white box in the annotation means that the expression was very low and no change of expression is displayed.
+
+Do the treatments cluster as one would expect?
+
+<br/>
+<br/>
+
+Next I will cluster only by the special genes, i.e `r paste(focusgenes, collapse=",") `
+
+```{r hclust2, fig.height=8, comment=FALSE}
+
+tmp = df_change_per_replicate[focusindexes,grepl("change", colnames(df_change_per_replicate))]
+#tmp = changetab[focusindexes,]
+rownames(tmp) = df_change_per_replicate$symbol[focusindexes]
+colnames(tmp) = gsub(".change", "", colnames(tmp))
+#pdf(paste(outputdir,"/hclust_hippo_wnt_genes_mouse.pdf", sep=""), height=16)
+aheatmap(tmp,  Colv=T, Rowv=T, 
+				 na.color="black",
+				 color = colorRampPalette(c("green", "black", "red"), bias=1, space="rgb")(n = 50),
+				 annCol = anntab[, , drop=FALSE],
+				 #annColors=list(cancer=ribboncolors),
+				 main=paste("Clustered by log2 change in expression after treatment",sep=""),border_color=NA, 
+				 cellheight=15)
+#tullball=dev.off()
+
+
+```
+
+
+
+
+<br/>
+<br/>
+
+
+## Test for differential expression
+
+
+The test for differential expression is done using "sleuth" which is made by the same people that made kallisto. Sleuth can make use of the bootstrap data made in kallisto. I will use the "Wald test". The replicate information will be used and included in the model, so that this apparent batch effect will be accounted for. The result data will be written to the result folder.
+
+This is the first time I have used sleuth and I some of choices I had to make was not very well explained, but the results look meaningful to me.
+
+```{r diff}
+
+# Using the sleuth_wt, but unsure why i am not using sleuth_lrt.
+#so_gene <- sleuth_fit(so_gene, ~treatment + replicate, 'full')
+
+# design_matrix(so_gene, which_model = "full")
+
+
+# A really stupid way to do pairwise comparisons suggested here: https://groups.google.com/forum/#!topic/kallisto-sleuth-users/XnzrHCCjzO8
+# condA <- which(s2c$condition == "A")
+# condB <- which(s2c$condition == "B")
+# s2c_AvsB <- s2c[c(condA,condB),]
+# sleuth_prep(s2c_AvsB, ~condition, ...)
+
+
+#so_gene <- sleuth_fit(so_gene, ~group, 'treatment')
+#so_gene <- sleuth_lrt(so_gene, 'treatment', 'full')
+#full_results <- sleuth_results(so_gene, 'treatment:full', 'lrt', show_all = FALSE)
+#kallisto_table(so_gene)
+geneannot = so_gene$target_mapping %>%
+	dplyr::select(ens_gene, ext_gene)%>%
+	distinct()
+
+
+so_baseline = list(DMSO=so_gene, WNT=so_gene)
+so_baseline[["DMSO"]]$sample_to_covariates$treatment = factor(so_gene$sample_to_covariates$treatment, levels=c("DMSO", "G007LK", "WNT", "WNT_G007LK"))
+so_baseline[["DMSO"]] = sleuth_fit(so_baseline[["DMSO"]], ~treatment + replicate, 'full')
+
+so_baseline[["WNT"]]$sample_to_covariates$treatment = factor(so_gene$sample_to_covariates$treatment, levels=c("WNT", "G007LK", "DMSO", "WNT_G007LK"))
+so_baseline[["WNT"]] = sleuth_fit(so_baseline[["WNT"]], ~treatment + replicate, 'full')
+
+# design_matrix(so_baseline[["DMSO"]], which_model = "full")
+# design_matrix(so_baseline[["WNT"]], which_model = "full")
+
+
+pvaluetab = data.frame()
+
+for(i in 1:nrow(treat2baseline))
+{
+	treatment = treat2baseline[i, "treatment"]
+	baseline = treat2baseline[i, "baseline"]
+	
+	so_tmp <- sleuth_wt(so_baseline[[baseline]], paste0("treatment", treatment), 'full')
+	restab_gene <- sleuth_results(so_tmp, paste0("treatment", treatment), 'wt', show_all = TRUE, rename_cols=FALSE)
+	comparison = treat2baseline[i, "comparison"]
+	
+	restab_gene = restab_gene %>%
+	dplyr::rename(ens_gene=target_id) %>%
+	left_join( geneannot )
+	
+	restab_gene %>% 
+	write.table(file=paste0(outputdir, "/mouse_sleuth_res_",comparison, "_", ds, ".txt"), quote=FALSE, row.names=FALSE, sep="\t")
+	
+	
+	kable(restab_gene[1:10, ], caption=paste0("Top 10 genes based on p-value,",comparison  ))
+	
+	
+	pvaluetab = rbind( pvaluetab, data.frame(pval=restab_gene$pval, feature="gene", comparison=comparison))
+}
+
+```
+
+The above lists the top 10 genes
+
+```{r pvalues}
+
+	ggplot(pvaluetab, aes(x = pval))+
+	geom_histogram(bins=100) +
+	facet_wrap(~comparison)
+	
+```
+
+
+<br/>
+<br/>
+
+The conclusion of this part of the analysis is that all the treatments seems to have a decent effect on the gene expression. 
+
+
+
+
+```{r dummytest}
+# Below is a comment out simple manual sanity check where the treatment labels are re-sampled for each cell line. For a few runs it seemed that this rarely gave any significant genes at all.
+
+# dummy test manually swapping treatment labels
+# so_dummy = so_gene
+# a = so_dummy$sample_to_covariates$treatment %in% c("DMSO", "G007LK")
+# so_dummy$sample_to_covariates$treatment[a] = unlist(lapply(rep(2,3), FUN=sample, x=c("DMSO", "G007LK"),  replace=FALSE, prob=NULL))
+# so_dummy <- sleuth_fit(so_dummy, ~treatment + replicate, 'full')
+# so_dummy <- sleuth_wt(so_dummy, 'treatmentG007LK', 'full')
+# restab_dummy <- sleuth_results(so_dummy, 'treatmentG007LK', 'wt', show_all = FALSE, rename_cols=FALSE)
+# table(restab_dummy$qval<0.05)
+```
+
+<br/>
+<br/>
+
+
+```{r hclust3}
+
+
+
+```
+
+##References
+
+kallisto:
+https://www.nature.com/articles/nbt.3519
+
+sleuth:
+https://www.nature.com/articles/nmeth.4324
+

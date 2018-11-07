@@ -1,0 +1,13 @@
+cell_line,symbol_mouse,aa_change,symbol_human,mutationtype
+mouse,Alk,G386R,ALK,missense_variant
+mouse,Apc,Q1039*,APC,stop_gained
+mouse,Atm,K92T,ATM,missense_variant
+mouse,Braf,C264R,BRAF,missense_variant
+mouse,Brca2,K1997N,BRCA2,missense_variant
+mouse,Cdkn2a,DEL,CDKN2A,
+mouse,Fgfr2,L731H,FGFR2,missense_variant
+mouse,Pdgfra,S145F,PDGFRA,missense_variant
+mouse,Pten,T131P,PTEN,missense_variant
+mouse,Ret,K748N,RET,missense_variant
+mouse,Stat3,R152Q,STAT3,missense_variant
+mouse,Trp53,N128D,TP53,missense_variant

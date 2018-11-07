@@ -1,0 +1,692 @@
+---
+title: "DEG analysis and plots"
+author: "Vegard Nygaard"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+knit: (function(inputFile, encoding) { rmarkdown::render("DEG_analysis_human.rmd", encoding="UTF8", output_file=paste0( "DEG_analysis_human_", Sys.Date(),".html")) })
+---
+
+<style>
+  .main-container {
+    max-width: 2000px !important;
+  }
+</style>
+
+<br/>
+Analysis of RNASeq from 18 cell lines untreated/treated.
+<br/>
+<br/>
+The 18 * 2 RNASeq samples have been quantified using [kallisto](https://pachterlab.github.io/kallisto/). Data was mapped to the Homo_sapiens.GRCh38.rel91.cdna.all transcriptome. In this report, the data will be analysis with the aim to find genes/transcripts that differ between groups i.e. treated/untreated and maybe also mutational status. In addition some handy sample_vs_genes matrices will be written out.
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+options(width = 1000)
+starttime = Sys.time()
+library(sleuth)
+library(tidyverse)
+library(knitr)
+library(NMF)
+library(limma)
+library(edgeR)
+nmf.options(grid.patch=TRUE)
+set.seed(100)
+
+
+ds = Sys.Date()
+usesavedobjects = TRUE
+outputdir = paste("output_sleuth_human_", ds, sep="")
+if(!file.exists(outputdir))dir.create(outputdir)
+genelistdir = paste0(outputdir, "/DEGtest_results_", ds)
+if(!file.exists(genelistdir))dir.create(genelistdir)
+postfix=".csv"
+fdrthreshold=0.05
+
+library(kableExtra)
+debug=FALSE
+```
+
+```{r readsa}
+
+sa = read.csv("sa.csv", stringsAsFactors = FALSE)
+sa  = sa %>%
+	dplyr::rename(sample=sample_name) %>%
+	mutate(path=paste0("not_in_github/kallistooutput/", sample)) %>%
+	mutate(sample_colname=make.names(sample)) %>%
+	mutate(cell_line_safename = make.names(cell_line)) %>%
+	arrange(cell_line, treatment) %>%
+#	left_join(read.csv("../annotation/pub_mutations.csv", stringsAsFactors = FALSE) )  %>%
+	left_join(read_csv("../annotation/cellline_annotation.csv"))
+
+kable(sa, caption="Sample annotation")
+
+write_csv(sa, paste0(outputdir, "/sampleannotation_combined.csv"))
+
+```
+
+The 18 different cell lines treated with "G007LK" or "DMSO", in total 36 samples.
+
+<br/>
+<br/>
+
+## Difference between groups/treatment
+
+I will use the [sleuth](https://pachterlab.github.io/sleuth/) program to find differentially expressed transcripts and genes. 
+<br/>
+Sleuth is made by the same group that made kallisto and it is designed to make use of the "bootstrap" output from kallisto in order to better account for the uncertainty in the measurements.
+<br/><br/>
+ I will loosely follow the tutorial here : https://pachterlab.github.io/sleuth_walkthroughs/trapnell/analysis.html <br/>
+
+<br/>
+However, I was unable to make sleuth work when I wanted to include 3 variables in the test, and I had to use limma for these tests.
+
+```{r readkallistooutput}
+
+
+# mart <- biomaRt::useMart(biomart = "ENSEMBL_MART_ENSEMBL", dataset = "hsapiens_gene_ensembl",	 host = 'ensembl.org') # did not work
+
+if(usesavedobjects)
+{
+		t2g <- readRDS("not_in_github/t2g.rds")
+		so_gene = readRDS("not_in_github/so_gene36.rds")
+		
+}else{
+	library(biomaRt)
+	mart <- useMart(biomart = "ensembl", dataset = "hsapiens_gene_ensembl")
+	t2g <- biomaRt::getBM(attributes = c("ensembl_transcript_id", "ensembl_gene_id", "external_gene_name"), mart = mart)
+	t2g <- dplyr::rename(t2g, target_id = ensembl_transcript_id,
+										 ens_gene = ensembl_gene_id, ext_gene = external_gene_name)
+	saveRDS(t2g, "not_in_github/t2g.rds")
+	
+	so_gene <- sleuth_prep(sa, target_mapping = t2g,
+									aggregation_column = 'ens_gene')
+	saveRDS(so_gene, "not_in_github/so_gene36.rds")
+	
+	# so_transcript <- sleuth_prep(sa, target_mapping = t2g)
+}
+# write.csv(t2g, file="biomart_ensembl.csv")
+
+
+```
+
+<br/>
+<br/>
+
+A PCA plot to see obvious pattern.
+
+```{r pca1, fig.height=15, fig.width=15}
+
+plot_pca(so_gene, color_by = 'cell_line', text_labels=TRUE, units="scaled_reads_per_base")
+
+```
+
+It seems that the effect of treatment is small compared to the biological differences between the cell lines.
+
+<br/>
+<br/>
+```{r clusterdmso}
+
+tmp = sleuth_to_matrix(so_gene, which_df="obs_norm",  which_units="tpm")$data[, sa$sample[sa$treatment=="DMSO"]]
+tmp = tmp[rowSums(tmp > 1) > 15,]
+#sa$sample %in% colnames(tmp)
+anntab = sa[sa$treatment=="DMSO", c("Stage", "class_by_mutation"), drop=FALSE]
+
+#pdf(paste(outputdir,"/hclust_untreated.pdf", sep=""), height=16)
+aheatmap(tmp,  Colv=T, Rowv=T, 
+				 na.color="black",
+				 color = colorRampPalette(c("green", "black", "red"), bias=1, space="rgb")(n = 50),
+				 annCol = anntab,
+				 #annColors=list(cancer=ribboncolors),
+				 main=paste("DMSO samples, expressed genes only",sep=""),border_color=NA, 
+				 cellheight=0.0001, 
+				 legend=NA)
+#tullball=dev.off()
+
+
+```
+
+The test for differential expression is done with the "Wald test". First the effect of the treatment, i.e G007LK compared to DMSO inside each cell line.
+
+```{r diff}
+
+# Using the sleuth_wt, but unsure why i am not using sleuth_lrt.
+so_gene <- sleuth_fit(so_gene, ~cell_line_safename + treatment, 'full')
+so_gene <- sleuth_wt(so_gene, 'treatmentG007LK', 'full')
+restab_change <- sleuth_results(so_gene, 'treatmentG007LK', 'wt', show_all = FALSE, rename_cols=FALSE)
+
+geneannot = so_gene$target_mapping %>%
+	dplyr::select(ens_gene, ext_gene)%>%
+	distinct()
+
+restab_change = restab_change %>%
+	dplyr::rename(ens_gene=target_id) %>%
+	left_join( geneannot )
+
+kable(restab_change[1:25, ], caption="Top 25 genes based on p-value, treated/untreated")
+
+compname = "G007LK_vs_DMSO"
+restab_change %>% 
+	write.table(file=paste0(genelistdir, "/", compname, "_sleuth_results_", ds, ".txt"), quote=FALSE, row.names=FALSE, sep="\t")
+
+print(paste0("For ", compname, " the number of genes with FDR less than ", fdrthreshold, " is ", sum(restab_change$qval < fdrthreshold, na.rm = TRUE)))
+
+
+```
+
+The above lists the top 25 genes
+
+```{r pvalues}
+
+	ggplot(restab_change, aes(x = pval))+
+	geom_histogram(bins=100) 
+
+```
+
+
+The conclusion of this part of the analysis is that the treatment, "G007LK", seems to have a modest effect on the gene expression. 
+
+<br/>
+<br/>
+<br/>
+
+
+```{r dummytest}
+
+#Below is a comment out simple manual sanity check where the treatment labels are re-sampled for each cell line. #For a few runs it seemed that this rarely gave any significant genes at all.
+
+# dummy test manually swapping treatment labels
+# so_dummy = so_gene
+# so_dummy$sample_to_covariates$treatment = unlist(lapply(rep(2,9), FUN=sample, x=c("DMSO", "G007LK"),  replace=FALSE, prob=NULL))
+# so_dummy <- sleuth_fit(so_dummy, ~cell_line + treatment, 'full')
+# so_dummy <- sleuth_wt(so_dummy, 'treatmentG007LK', 'full')
+# restab_dummy <- sleuth_results(so_dummy, 'treatmentG007LK', 'wt', show_all = FALSE, rename_cols=FALSE)
+# table(restab_dummy$qval<0.05)
+```
+
+<br/>
+<br/>
+
+
+##Output of matrixes 
+
+I will write out a few matrices of the data without any test for differentially expressed genes. The files will be in the `r outputdir` folder.
+
+
+<br/>
+
+Sample vs gene has all the samples in the columns and the genes in the rows. Values are TPM.
+
+```{r sample_vs_gene}
+
+# write sample_vs_gene
+df_gene = sleuth_to_matrix(so_gene, which_df="obs_norm",  which_units="tpm")$data
+colnames(df_gene) = make.names(colnames(df_gene))
+df_gene = df_gene[, sa$sample_colname] # make sure same order
+df_gene = as.data.frame(df_gene) %>%
+	mutate(gene_id=row.names(df_gene)) %>%
+	left_join(so_gene$target_mapping[, c("ens_gene", "ext_gene")] ,by=c("gene_id"="ens_gene")) %>%
+	rename(symbol = ext_gene) %>%
+	distinct() %>%
+	dplyr::select(gene_id, symbol,  everything() )
+
+rownames(df_gene) = df_gene$gene_id
+df_gene %>% write_csv(path=paste0(outputdir, "/sample_vs_gene_tpm_", ds, ".csv"))
+
+
+### and also for counts
+# adapted from https://f1000research.com/articles/5-1408/v2
+countmat = sleuth_to_matrix(so_gene, which_df="obs_raw",  which_units="est_counts")$data # for some reason the full transcript data is used here, not just gene summaries
+countmatannot = tibble(target_id=rownames(countmat)) %>%
+	left_join(so_gene$target_mapping) %>%
+	replace(., is.na(.), "")
+countmat = countmat[, sa$sample]
+df_gene_count = as_tibble(countmat) %>%
+	mutate(ens_gene = countmatannot$ens_gene) %>%
+	tidyr::gather(sample, value, -ens_gene) %>%
+	group_by(sample,ens_gene) %>%
+	summarise(genecount = sum(value) ) %>%
+	tidyr::spread(sample, genecount) %>%
+	dplyr::filter(ens_gene != "")  %>%
+	rename(gene_id = ens_gene)   %>%
+	left_join(df_gene[,c("gene_id", "symbol")]) %>%
+	dplyr::select(gene_id, symbol,  everything() )
+#genecountmat = as.matrix(df_gene_count[, !colnames(df_gene_count) %in%  c("gene_id", "symbol")])
+#rownames(genecountmat) = df_gene_count$gene_id
+
+df_gene_count %>% write_csv(path=paste0(outputdir, "/sample_vs_gene_count_", ds, ".csv"))
+
+
+# table(df_gene$gene_id == df_gene_count$ens_gene)
+
+```
+
+<br/>
+<br>
+
+Sample vs gene change untreated/treated, can also be called response.
+
+```{r change}
+
+# compute change per cell line after treatment
+add = 0.1 # workaround to deal with zeros in log and division.
+changetab = log2( (df_gene[,make.names(sa$sample[sa$treatment=="G007LK"])]+add)/(df_gene[,make.names(sa$sample[sa$treatment=="DMSO"])]+add))
+colnames(changetab) = gsub( "G007.LK" , "change" , colnames(changetab))
+sumtpmtab = (df_gene[,make.names(sa$sample[sa$treatment=="G007LK"])]+df_gene[,make.names(sa$sample[sa$treatment=="DMSO"])])
+colnames(sumtpmtab) = gsub( "G007.LK" , "sumTPM" , colnames(sumtpmtab))
+df_change = cbind(changetab, sumtpmtab)
+df_change = df_change[, order(colnames(df_change))]
+df_change = data.frame(gene_id=row.names(df_change), symbol=so_gene$target_mapping$ext_gene[match(row.names(df_change), so_gene$target_mapping$ens_gene)]  ,df_change)
+write.csv(df_change, file=paste0(outputdir, "/sample_vs_gene_tpm_log2change_", ds, ".csv"), row.names=FALSE)
+
+
+#plotMA(df_gene[,4:5])
+#nlim = 1:100
+#plot(log2(df_change[nlim,4]+0.1)/2, df_change[nlim,3])
+#smoothScatter(log2(df_change[nlim,4]+0.1)/2, df_change[nlim,3])
+
+pdf(file=paste0(outputdir, "/MA_plots_human.pdf"))
+for(cellline in unique(sa$cell_line))
+{
+	celllinesafe = make.names(cellline)
+	xname = paste0(celllinesafe, ".sumTPM")
+	yname = paste0(celllinesafe, ".change")
+	#nlim = 1:100
+	dotcolors = c("black", "red")
+	#isDEG = df_change$gene_id %in% restab_change$ens_gene[restab_change$qval<0.05]
+	
+	
+	tmpdf = tibble( gene_id = df_change[, "gene_id"], meanTPM=df_change[, xname], foldchange=df_change[, yname]) %>%
+		mutate(meanTPM= log2(meanTPM+add)/2) %>%
+		mutate(isDEG = gene_id %in% restab_change$ens_gene[restab_change$qval<0.05])
+	
+	#nlim = 1:1000
+	p = tmpdf[,] %>% ggplot(aes(x=meanTPM, y=foldchange)) +
+		geom_point(data=tmpdf[!tmpdf$isDEG,], aes(x=meanTPM, y=foldchange,color="black"), pch=".") +
+		geom_point(data=tmpdf[tmpdf$isDEG,], aes(x=meanTPM, y=foldchange,color="red"), pch=".") +
+		scale_colour_manual(name = 'FDR (q)', 
+         values =c('black'='black','red'='red'), labels = c('','q<0.05')) +
+		xlab("Mean TPM in log2") +
+		ylab("TPM fold change in log2 for this cell line") +
+		ggtitle(label=cellline, 
+				 subtitle="Marked genes are significantly altered using all the cell line \n(not necessarily any changed in this cell line)") +
+		xlim(c(-2,8)) +
+		ylim(c(-10,10))
+	print(p)
+#	plot(log2(df_change[, xname]+add)/2, df_change[, yname],
+#			 xlab="Mean TPM in log2",
+#			 ylab="TPM fold change in log2",
+#			 main=cellline,
+#			 xlim=c(-2,8),
+#			 ylim=c(-10,10),
+#			 # col=dotcolors[as.numeric(df_change[, yname]>0.1) + 1],
+#			 col = dotcolors[as.numeric(isDEG)+1],
+#			 pch=".")
+}
+kast=dev.off()
+
+
+```
+
+
+For the change-tab I added `r add` to every number as a quick workaround for the problem with log and division with zeros.
+
+<br/>
+<br/>
+
+## Special genes
+
+```{r plot_interesting_genes, fig.height=20}
+
+wntgenes = c("AXIN2", "TCF7")
+hippogenes = c("AMOTL2", "CTGF", "CYR61")
+notchgenes = c("HEY1", "HEY2")
+focusgenes = c(wntgenes, hippogenes, notchgenes, "MITF", "ACTB")
+
+focusdf = df_gene[df_gene$symbol %in% focusgenes, ] %>%
+	mutate(symbol = factor(symbol, levels=focusgenes)) %>%
+	gather(sample_colname, TPM, -gene_id, -symbol) %>%
+	left_join(sa[,c("sample_colname", "cell_line", "treatment")])
+
+
+ggplot(focusdf, aes(y=TPM, x=treatment, colour=cell_line, group=cell_line)) +
+	geom_line() +
+	scale_y_continuous(trans='log2') +
+	facet_wrap(~symbol, scales="free_y")
+
+
+
+```
+
+Change for a few interesting genes after treatment, ACTB was added as a sure positive control. Beware that the y-axis scale is different for each gene! TPM is Transcript per million. The plot itself is scaled, but the y-axis number is still in TPM, but not log2.
+<br/>
+Below is the actual TPM values. The expression vary between genes and cell lines.
+
+```{r plot_interesting_genes_table}
+
+focusdf %>% 
+	dplyr::select(TPM, cell_line, symbol,treatment) %>%
+	tidyr::spread(treatment, TPM) %>%
+	dplyr::select(-symbol, symbol) %>%
+	arrange(symbol) %>%
+	kable(digits=1)
+
+```
+
+<br/>
+<br/>
+
+The effect of the treatment may differ between cell lines with more similar effect in some cell lines. This can be visualized with a hierarchical cluster. 
+
+```{r hclust1, fig.height=8, comment=FALSE}
+
+focusindexes = df_change$symbol %in% focusgenes
+special_expression_tab = changetab[focusindexes,]
+special_expression_tab[sumtpmtab[focusindexes,]<5] = NA
+#special_expression_tab = special_expression_tab[order(match(rownames(special_expression_tab), focusgenes)),]
+rownames(special_expression_tab) = df_change$symbol[focusindexes]
+
+special_expression_tab = special_expression_tab[match(focusgenes,rownames(special_expression_tab)) , ]
+# special_expression_tab["wntgenes",] = colSums(special_expression_tab[wntgenes,])/length(wntgenes)
+special_expression_tab["wntgenes",] = apply(special_expression_tab[wntgenes,], MARGIN=2, FUN=mean, na.rm=TRUE)
+special_expression_tab["hippogenes",] = apply(special_expression_tab[hippogenes,], MARGIN=2, FUN=mean, na.rm=TRUE)
+special_expression_tab["notchgenes",] = apply(special_expression_tab[notchgenes,], MARGIN=2, FUN=mean, na.rm=TRUE)
+strong=rowSums(sumtpmtab > 5) > 15
+tmp = changetab[strong & !focusindexes,]
+colnames(tmp) = gsub(".change", "", colnames(tmp))
+
+
+anntab = sa[ match(colnames(tmp), sa$cell_line_safename)  , c("cell_line_safename", "Stage", "class_by_mutation")] 
+anntab = cbind(anntab, t(special_expression_tab[c("wntgenes","hippogenes", "notchgenes"),]) )
+# anntab$BRAF[anntab$BRAF!="WT"] = "MUT"
+
+pdf(paste(outputdir,"/hclust_strong_genes.pdf", sep=""), height=16)
+aheatmap(tmp,  Colv=T, Rowv=T, 
+				 na.color="black",
+				 color = colorRampPalette(c("green", "black", "red"), bias=1, space="rgb")(n = 50),
+				 annCol = anntab[, -1],
+				 #annColors=list(cancer=ribboncolors),
+				 main=paste("Clustered by change in stronger genes",sep=""),border_color=NA, 
+				 cellheight=0.0001, 
+				 legend=NA)
+tullball=dev.off()
+
+aheatmap(tmp,  Colv=T, Rowv=T,
+				 na.color="black",
+				 color = colorRampPalette(c("green", "black", "red"), bias=1, space="rgb")(n = 50),
+				 annCol = anntab[, -1],
+				 #annColors=list(cancer=ribboncolors),
+				 main=paste("Clustered by change in stronger genes",sep=""),border_color=NA, 
+				 cellheight=0.0001, 
+				 legend=NA)
+
+```
+
+The dendrogram was made using genes that were expressed in most samples, (`r nrow(tmp)` genes). All data used are change in expression i.e log2 of G007LK/DMSO for each cell line and gene. The heatmap for the data points are not presented. The annotation (Stage, class_by_mutation
+, WNTgenes, hippo-genes) and the 6 genes included in the annotation are not used to calculate the clustering, but are meant to potentially explain clustering. Be aware that the complete white box in the annotation means that the expression was very low and no change of expression is displayed.
+
+The only clear pattern that emerges is that MeVo and Skmel28 seems to differ from the rest. However, none of the annotations seems to correlate clearly with this pattern. So the cluster indicate that the the treatment (G007LK) has a different effect in the MeVo and Skmel28 cell lines compared to the other cell lines, but the annotation gives no clue why this is so.
+
+<br/>
+<br/>
+
+The next plot is using values from the top differentially expressed genes.
+
+```{r hclust2, fig.height=20}
+
+pdf(paste(outputdir,"/hclust_topdiff_genes.pdf", sep=""), height=20)
+topn = 100
+tmp = changetab[match( restab_change$ens_gene[1:topn], rownames(changetab) ),]
+colnames(tmp) = gsub(".change", "", colnames(tmp))
+rownames(tmp) = make.unique(restab_change$ext_gene[1:topn])
+#table( colnames(tmp) ==anntab$cell_line_safename)
+aheatmap(tmp,  Colv=T, Rowv=T, 
+				 na.color="black",
+				 color = colorRampPalette(c("green", "black", "red"), bias=1, space="rgb")(n = 50),
+				 annCol = anntab[, -1],
+				 #annColors=list(cancer=ribboncolors),
+				 main=paste0("Using top ", topn, " most DEG"),border_color=NA, 
+				 cellheight=10
+				 #legend=NA
+				 )
+tull=dev.off()
+
+
+aheatmap(tmp,  Colv=T, Rowv=T, 
+				 na.color="black",
+				 color = colorRampPalette(c("green", "black", "red"), bias=1, space="rgb")(n = 50),
+				 annCol = anntab[, -1],
+				 #filename = paste0(outputdir,"/hclust_topdiff_genes2222.pdf"),
+				 #annColors=list(cancer=ribboncolors),
+				 main=paste0("Using top ", topn, " most DEG"),border_color=NA, 
+				 cellheight=10
+				 #legend=NA
+				 )
+
+```
+
+Some clusters are formed.
+<br/>
+<br/>
+<br/>
+
+## Extra comparisons
+
+Based on exploratory analysis (Fig X-a) when combining the human data with the mouse data some interesting grouping of the samples were suggested. 
+
+<br/>
+First DEG analysis between the discovered groups "hipppo_low" and "hippo_high" in untreated samples (DMSO).
+
+Using all DMSO samples:
+
+```{r hippoDEG}
+
+# using a subset of samples, only untreated. Not able to subset a sleuth object, need to make a new one.
+if(usesavedobjects){
+	dmsohippo = readRDS("not_in_github/dmsohippo.rds")
+}else{
+	dmsohippo <- sleuth_prep(sa[sa$treatment=="DMSO",], target_mapping = t2g,
+									aggregation_column = 'ens_gene')
+	saveRDS(dmsohippo, "not_in_github/dmsohippo.rds")
+}
+tmpsa = dmsohippo$sample_to_covariates
+# tmpsa$hippo_group_untreated = sample(tmpsa$hippo_group_untreated) # ad-hoc permutation test
+tmpsa$hippo_group_untreated = factor(tmpsa$hippo_group_untreated, levels=c("low", "high"))
+design = model.matrix( ~hippo_group_untreated, data=tmpsa )  # force high vs low
+dmsohippo <- sleuth_fit(dmsohippo, design, 'full')
+# dmsohippo <- sleuth_fit(dmsohippo, ~hippo_group_untreated, 'full')
+dmsohippo <- sleuth_wt(dmsohippo, 'hippo_group_untreatedhigh', 'full')
+restab_dmsohippo <- sleuth_results(dmsohippo, 'hippo_group_untreatedhigh', 'wt', show_all = FALSE, rename_cols=FALSE)
+
+#hist(restab_dmsohippo$pval, breaks=100)
+ggplot(restab_dmsohippo, aes(x = pval))+
+geom_histogram(bins=100) 
+
+restab_dmsohippo = restab_dmsohippo %>%
+	dplyr::rename(ens_gene=target_id) %>%
+	left_join( geneannot )
+
+compname = "hippohigh_vs_hippolow_untreated"
+restab_dmsohippo %>% 
+	write.table(file=paste0(genelistdir, "/", compname, "_sleuth_results_", ds, ".txt"), quote=FALSE, row.names=FALSE, sep="\t")
+
+print(paste0("For ", compname, " the number of genes with FDR less than ", fdrthreshold, " is ", sum(restab_dmsohippo$qval < fdrthreshold, na.rm = TRUE)))
+
+```
+
+<br/>
+
+The result from sleuth are written to a file with genes in the rows sorted by p-value and with these columns 
+
+<br/>
+target_id: transcript name, e.g. "ENSXX#####" (dependent on the transcriptome used in kallisto)<br/>
+pval: p-value of the chosen model<br/>
+qval: false discovery rate adjusted p-value, using Benjamini-Hochberg (see p.adjust)<br/>
+b: 'beta' value (effect size). Technically a biased estimator of the fold change<br/>
+se_b: standard error of the beta<br/>
+mean_obs: mean of natural log counts of observations<br/>
+var_obs: variance of observation<br/>
+tech_var: technical variance of observation from the bootstraps<br/>
+sigma_sq: raw estimator of the variance once the technical variance has been removed<br/>
+smooth_sigma_sq: smooth regression fit for the shrinkage estimation<br/>
+final_simga_sq: max(sigma_sq, smooth_sigma_sq); used for covariance estimation of beta<br/>
+<br/>
+Explanation taken from the methods documentation.
+
+
+
+```{r HIPPODEG_response}
+
+
+genecountmat = as.matrix(df_gene_count[, !colnames(df_gene_count) %in%  c("gene_id", "symbol")])
+rownames(genecountmat) = df_gene_count$gene_id
+
+dge = DGEList(counts = genecountmat, genes=df_gene_count[, c("gene_id", "symbol")])
+keep.exprs <- rowSums(dge$counts>1) >= 20
+dge <- dge[keep.exprs,]
+dim(dge)
+
+dge <- calcNormFactors(dge, method = "TMM")
+# dge$samples$norm.factors
+
+
+
+sa$group_response_treatment = paste0("HIPPO", sa$hippo_group_untreated, "_", sa$treatment)
+#  using dupcorr for cell line, see https://support.bioconductor.org/p/59700/
+# ~0 +group_response_treatment+cell_line_safename will not work
+design <- model.matrix(~0 +group_response_treatment, data=sa)
+contr.matrix <- makeContrasts(
+   effectdiff = (group_response_treatmentHIPPOhigh_G007LK-group_response_treatmentHIPPOhigh_DMSO) 
+   									-(group_response_treatmentHIPPOlow_G007LK-group_response_treatmentHIPPOlow_DMSO),
+   levels = colnames(design))
+
+v <- voom(dge, design)
+corfit <- duplicateCorrelation(v, design, block = sa$cell_line_safename)
+v <- voom(dge, design, block = sa$cell_line_safename, correlation = corfit$consensus)
+vfit <- lmFit(v, design, block = sa$cell_line_safename, correlation = corfit$consensus)
+#vfit <- lmFit(v, design)
+vfit <- contrasts.fit(vfit, contrasts=contr.matrix)
+efit <- eBayes(vfit)
+tt = topTable(efit, number=Inf)
+ggplot(tt, aes(x = P.Value))+
+	geom_histogram(bins=100)  +
+	ggtitle("HIPPOhigh_vs_HIPPOlow_change_limma")
+tt %>% write_tsv(path=paste0(genelistdir, "/HIPPOhigh_vs_HIPPOlow_change_limma_results_", ds, ".txt"))
+#plotSA(efit)
+
+### check the diff in foldchanges
+ # df_change_a = df_change[, paste0(sa$cell_line_safename, ".change")[sa$hippo_group_untreated=="high"]]
+ # df_change_b = df_change[, paste0(sa$cell_line_safename, ".change")[sa$hippo_group_untreated=="low"]]
+ # df_group_diff = rowMeans(df_change_a) - rowMeans(df_change_b)
+ # 
+ # n = 1:1000
+ # plot(tt[n,"logFC"], df_group_diff[tt$ens_gene[n]])# a clear correlation, success!
+
+
+#tt %>% 
+#	write_tsv(path=paste0(outputdir, "/HIPPOhigh_vs_HIPPOlow_change_limma_results_", ds, ".txt"))
+
+sa$MITFtreatment = paste0("MITF", sa$MITFgroup, "_", sa$treatment)
+#  using dupcorr for cell line, see https://support.bioconductor.org/p/59700/
+# ~0 +group_response_treatment+cell_line_safename will not work
+design <- model.matrix(~0 +MITFtreatment, data=sa)
+contr.matrix <- makeContrasts(
+   effectdiff = (MITFtreatmentMITFhigh_G007LK-MITFtreatmentMITFhigh_DMSO) 
+   									-(MITFtreatmentMITFlow_G007LK-MITFtreatmentMITFlow_DMSO),
+   levels = colnames(design))
+
+v <- voom(dge, design)
+corfit <- duplicateCorrelation(v, design, block = sa$cell_line_safename)
+v <- voom(dge, design, block = sa$cell_line_safename, correlation = corfit$consensus)
+vfit <- lmFit(v, design, block = sa$cell_line_safename, correlation = corfit$consensus)
+#vfit <- lmFit(v, design)
+vfit <- contrasts.fit(vfit, contrasts=contr.matrix)
+efit <- eBayes(vfit)
+tt = topTable(efit, number=Inf)
+ggplot(tt, aes(x = P.Value))+
+	geom_histogram(bins=100) +
+	ggtitle("MITFhigh_vs_MITFlow_change_limma")
+	
+tt %>% write_tsv(path=paste0(genelistdir, "/MITFhigh_vs_MITFlow_change_limma_results_", ds, ".txt"))
+
+
+
+
+
+##### venngroup
+sa$venngrouptreatment = paste0(sa$venngroup, "_", sa$treatment)
+#  using dupcorr for cell line, see https://support.bioconductor.org/p/59700/
+# ~0 +group_response_treatment+cell_line_safename will not work
+design <- model.matrix(~0 +venngrouptreatment, data=sa)
+contr.matrix <- makeContrasts(
+   effectdiff = (venngrouptreatmentcentral_G007LK-venngrouptreatmentcentral_DMSO) 
+   									-(venngrouptreatmentgreen_G007LK-venngrouptreatmentgreen_DMSO),
+   levels = colnames(design))
+compname = "venngroupcentral_vs_venngroupgreen"
+v <- voom(dge, design)
+corfit <- duplicateCorrelation(v, design, block = sa$cell_line_safename)
+v <- voom(dge, design, block = sa$cell_line_safename, correlation = corfit$consensus)
+vfit <- lmFit(v, design, block = sa$cell_line_safename, correlation = corfit$consensus)
+#vfit <- lmFit(v, design)
+vfit <- contrasts.fit(vfit, contrasts=contr.matrix)
+efit <- eBayes(vfit)
+tt = topTable(efit, number=Inf)
+ggplot(tt, aes(x = P.Value))+
+	geom_histogram(bins=100) +
+	ggtitle(paste0(compname, "_change_limma"))
+	
+tt %>% write_tsv(path=paste0(genelistdir, "/", compname, "_change_limma_results_", ds, ".txt"))
+
+
+### check the diff in foldchanges
+ # df_change_a = df_change[, paste0(sa$cell_line_safename, ".change")[sa$venngroup=="central"]]
+ # df_change_b = df_change[, paste0(sa$cell_line_safename, ".change")[sa$venngroup=="green"]]
+ # df_group_diff = rowMeans(df_change_a) - rowMeans(df_change_b)
+ # 
+ # n = 1:1000
+ # plot(tt[n,"logFC"], df_group_diff[tt$gene_id[n]])# a clear correlation, success!
+
+
+```
+
+
+
+##References
+<br/>
+kallisto:<br/>
+https://www.nature.com/articles/nbt.3519<br/>
+<br/>
+<br/>
+sleuth:<br/>
+https://www.nature.com/articles/nmeth.4324<br/>
+<br/>
+<br/>
+
+limma:<br/>
+https://genomebiology.biomedcentral.com/articles/10.1186/gb-2014-15-2-r29<br/>
+https://f1000research.com/articles/5-1408/v2<br/>
+
+
+
+<br/>
+<br/>
+<br/>
+
+```{r}
+
+```
+## Session info
+
+```{r}
+
+print(sessionInfo())
+
+
+
+
+```

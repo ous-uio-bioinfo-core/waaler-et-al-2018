@@ -1,0 +1,20 @@
+cell_line,cell_line_dna_mut_name,cell_line_article_name,Stage,class_by_mutation,provider,venngroup,MITFgroup,hippo_group_untreated,hippo_group_response,group_response,outlier
+A375,A375,A-375,VGP,BRAF,American Type Culture Collection,central,low,high,e,b,TRUE
+FemxI,Femx-1,FEMX-I,Metastatic,RAS,Norwegian Radium Hospital,green,high,low,c,b,FALSE
+FemxV,Femx-5,FEMX-V,Metastatic,RAS,Norwegian Radium Hospital,green,high,low,c,a,FALSE
+LOX,Lox,LOX-IMVI,Metastatic,BRAF,Norwegian Radium Hospital,reminder,low,high,d,b,FALSE
+MeWo,MeWo,MeWo,Metastatic,NF1,American Type Culture Collection,green,high,low,b,a,FALSE
+Skmel28,,SK-MEL-28,Metastatic,BRAF,American Type Culture Collection,reminder,high,low,c,a,FALSE
+WM115,Wm115,WM115,VGP,BRAF,Wistar Institute,green,high,low,a,a,FALSE
+WM1341,Wm1341,WM1341B,VGP,BRAF,Wistar Institute,green,high,low,a,b,FALSE
+WM1366,Wm1366,WM1366,VGP,RAS,Wistar Institute,central,low,high,b,b,FALSE
+WM1382,Wm1382,WM1382,Metastatic,WT,Wistar Institute,green,high,low,c,a,FALSE
+WM239,Wm239,WM239A,Metastatic,BRAF,Wistar Institute,green,high,low,b,a,FALSE
+WM266,Wm266-4,WM266.4,Metastatic,BRAF,Wistar Institute,reminder,low,low,b,b,TRUE
+WM35,Wm35,WM35,RGP,BRAF,Wistar Institute,green,high,low,a,a,FALSE
+WM45-1,Wm45-1,WM451Lu,Metastatic,BRAF,Wistar Institute,reminder,high,low,d,b,FALSE
+WM793,,WM793B,VGP,BRAF,Wistar Institute,central,low,high,a,a,FALSE
+WM852,Wm852,WM852,Metastatic,RAS,Wistar Institute,central,low,high,a,b,FALSE
+WM9,Wm9,WM9,Metastatic,BRAF,Wistar Institute,reminder,high,low,d,b,FALSE
+WM983,Wm983,WM983B,Metastatic,BRAF,Wistar Institute,reminder,high,high,a,a,FALSE
+mouse,,B16-F10,,,American Type Culture Collection,reminder,low,high,mouse,mouse,TRUE

@@ -1,0 +1,348 @@
+---
+title: "Mutation overview"
+author: "Vegard Nygaard"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+knit: (function(inputFile, encoding) { rmarkdown::render("mutation_overview.rmd", encoding="UTF8", output_file=paste0( "mutation_overview_", Sys.Date(),".html")) })
+---
+
+<style>
+  .main-container {
+    max-width: 2000px !important;
+  }
+</style>
+
+<br/>
+A quick overview of the mutations found in the RNASeq data for the 18 human cell lines.
+<br/>
+<br/>
+The mutation calling for the RNASeq data was done using the "Finding Common Mutations In Common Cancers From RNASeq Without Germ line" workflow (homemade). This will only find a few likely driver mutations which must be previously described in the Cosmic data base.
+<br/>
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+options(width = 1000)
+starttime = Sys.time()
+library(tidyverse)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(GenVisR)
+library(RColorBrewer)
+set.seed(100)
+
+# setwd("~prosjekter/rprojects/krauss")
+
+ds = Sys.Date()
+usesavedobjects = TRUE
+rnaseqmutationresultdir = "vardict_results_2018-09-07"
+outputdir = paste("output_mutation_call_", ds, sep="")
+if(!file.exists(outputdir))dir.create(outputdir)
+postfix=".csv"
+debug=FALSE
+```
+
+```{r readsa}
+
+sa = read_csv("../annotation/cellline_annotation.csv")
+
+variantclasses = c("stop_gained"="stop_gained",
+									 "stopgain"="stop_gained",
+									 "missense_variant" = "missense_variant",
+									 "nonsynonymous SNV"= "missense_variant",
+									 "nonframeshift substitution" = "missense_variant",
+									 "mutated" = "mutated",
+									 "splice_acceptor_variant" = "splice_acceptor_variant"
+									 )
+
+# kable(sa, caption="Cell line annotation")
+
+```
+
+
+<br/>
+<br/>
+
+```{r rnaseqmutations}
+
+nicecols = c("Sample", "Gene", "Chr", "Start", "End", "Ref", "Alt", "AN_Func.refGene", "AN_ExonicFunc.refGene", "AN_AAChange.refGene", "AN_cosmic82", "matchstring")
+
+
+tabs = list()
+for(cl in sa$cell_line)
+{
+	fn = paste0(rnaseqmutationresultdir, "/", cl, "_mutations_bigtab.csv")
+	if(file.exists(fn))
+	{
+		tabs[[cl]] = read_csv(fn) %>%
+			dplyr::select(nicecols) %>%
+			dplyr::filter(AN_cosmic82 != ".") %>%
+			#mutate(AAchange = getAAchange(AN_AAChange.refGene))
+			tidyr::separate(AN_AAChange.refGene, into=c("tmp", "LOCUS", "exon", "NTchange", "AAchange"), sep=":|,", extra="drop", fill="right") %>%
+			dplyr::select(-tmp) %>%
+			rename("cell_line"=Sample)
+	}else{
+		warning("Did not find file ", fn)
+		}
+}
+muttabRNA = do.call("rbind",tabs)
+
+SNPs_in_cosmic = c("chr11_95825407_C_T")
+do_not_trust_in_IGV = c("chr9_134007992_G_A")
+muttabRNA = muttabRNA %>%
+	dplyr::filter(!matchstring %in% SNPs_in_cosmic) %>%
+	dplyr::filter(!matchstring %in% do_not_trust_in_IGV)
+
+muttabRNA %>% 
+	group_by(matchstring) %>%
+	summarise(count = n()) %>%
+	arrange(desc(count)) %>%
+	left_join(muttabRNA[, c("matchstring", "Gene", "AAchange", "AN_ExonicFunc.refGene")]) %>%
+	distinct() %>%
+	kable()
+
+MC1R_RNA = read_csv( "MC1R_germline_found_in_IGV.csv")
+muttabRNA = muttabRNA %>%
+	bind_rows(MC1R_RNA)
+
+```
+
+The above is summary of the findings, a couple of positions were found unreliable and removed. The MC1R variants were found by inspecting a few known germ line SNVs that are related to cancer using IGV. It was known from other sources that MC1R variants were present in these cell lines.
+<br/>
+<br/>
+Here are the individual mutations, also written to file.
+
+```{r}
+
+
+
+kable(muttabRNA)
+
+write_tsv(muttabRNA, path=paste0(outputdir, "/mutations_from_RNASeq_", ds, ".tsv"))
+
+```
+
+<br/>
+<br/>
+<br/>
+The mutations found from RNASeq using "waterfall"-plot.
+
+```{r fig.height=10, fig.width=10}
+muttabRNA = muttabRNA %>%
+	left_join(sa) 
+
+clindata = sa %>%
+	dplyr::select(cell_line, hippo_group_untreated) %>%
+	rename(sample=cell_line) %>%
+	gather( variable, value, -sample) 
+
+wfRNA = data.frame(sample=muttabRNA$cell_line , gene=muttabRNA$Gene, variant_class=muttabRNA$AN_ExonicFunc.refGene,
+										mutstring=paste(muttabRNA$cell_line, muttabRNA$Gene, sep="_"), group=muttabRNA$hippo_group_untreated, 
+									 stringsAsFactors = FALSE) %>%
+	dplyr::filter(variant_class!="synonymous SNV" )
+wfRNA$variant_class = variantclasses[wfRNA$variant_class]
+#wfRNA$variant_class = factor(wfRNA$variant_class, levels=c("stopgain", "nonsynonymous SNV", "nonframeshift substitution"))
+#wfRNA = wfRNA[order(wfRNA$variant_class),]
+
+vc = unique(wfRNA$variant_class)
+mp = brewer.pal(length(vc), "Set1")
+
+#pdf(paste0(outputdir, "/waterfallplot_RNASeq_", ds, ".pdf"), width=15)
+#x=waterfall(wfRNA, fileType="Custom", variant_class_order=unique(variantclasses), 
+#					mainXlabel=TRUE, mainDropMut=TRUE, plotMutBurden=FALSE, plot_proportions=FALSE, 
+#					sampOrder = sa$cell_line[sa$cell_line %in% wfRNA$sample], mainPalette=mp,
+#					clinData=clindata)
+#x=dev.off()
+
+
+x=waterfall(wfRNA, fileType="Custom", variant_class_order=unique(variantclasses), 
+					mainXlabel=TRUE, mainDropMut=TRUE, plotMutBurden=FALSE, plot_proportions=FALSE, 
+					sampOrder = sa$cell_line[sa$cell_line %in% wfRNA$sample], mainPalette=mp,
+					clinData=clindata)
+
+# rs1805005
+
+
+```
+
+Be aware that some of the only-once mutations (per gene) could be false since the workflow has relaxed settings for what is accepted (as long as it is described in Cosmic).
+
+<br/>
+<br/>
+
+
+```{r fig.height=10, fig.width=10}
+
+
+#nonSNV = c("", "Amplified", "CN loss", "Del", "Deletion", "Normal", "WT", "WT ", "Medium", "Lacking", "Low", "Hom loss", "Hem Del", "Hem/homo Del")
+#muttabhuman = sa %>%
+#	dplyr::filter(cell_line != "mouse") %>%
+#	left_join(read_csv("../annotation/pub_mutations.csv")) %>%
+#	dplyr::select( cell_line, BRAF,PTEN, NF1, HRAS, NRAS,CDK4, MC1R, CDKN2A, TP53, MITF) %>%
+#	gather(gene, state, -cell_line) %>%
+#	dplyr::filter(!state %in% nonSNV) %>%
+#	dplyr::filter(!is.na(state))
+
+
+
+muttabmouse = read_csv("../annotation/mouse_mutations.csv") %>%
+	dplyr::select(cell_line, symbol_human, aa_change) %>%
+	rename(gene = symbol_human) %>%
+	rename(state = aa_change)
+
+mutlabs = c("Mutated", "Mut", "Del")
+
+#muttabPUB = rbind(muttabhuman, muttabmouse) %>%
+#	mutate(variant_class = "not_set") %>%
+#	mutate(variant_class = if_else(state %in% mutlabs, "mutated", variant_class)) %>%
+#	mutate(variant_class = if_else( grepl("\\*|x", tolower(state)), "stop_gained", variant_class)) %>%
+#	mutate(variant_class = if_else(! (grepl("\\*|x", tolower(state)) | state %in% mutlabs ) , "missense_variant", variant_class))
+
+
+
+#muttabPUB = muttabPUB %>%
+#	left_join(sa)
+#wfPUB = data.frame(sample=muttabPUB$cell_line , gene=muttabPUB$gene, variant_class=muttabPUB$variant_class,
+#										group=muttabPUB$hippo_group_untreated, stringsAsFactors = FALSE)
+#wfPUB$variant_class = variantclasses[wfPUB$variant_class]
+#vc = unique(wfPUB$variant_class)
+#mp = brewer.pal(length(vc), "Set1")
+#pdf(paste0(outputdir, "/waterfallplot_publication_mutations_", ds, ".pdf"), width=15)
+#x=waterfall(wfPUB, fileType="Custom",   variant_class_order=unique(variantclasses),
+#					mainXlabel=TRUE, mainDropMut=TRUE, plotMutBurden=FALSE, plot_proportions=FALSE, sampOrder = sa$cell_line[sa$cell_line %in% wfPUB$sample], mainPalette=mp)
+#x=dev.off()
+
+#x=waterfall(wfPUB, fileType="Custom",   variant_class_order=unique(variantclasses),
+#					mainXlabel=TRUE, mainDropMut=TRUE, plotMutBurden=FALSE, plot_proportions=FALSE, sampOrder = sa$cell_line[sa$cell_line %in% wfPUB$sample], mainPalette=mp)
+
+```
+
+<!--
+Most of the top driver mutations from publication mutations are re-found from RNASeq data (except MCR1 since it is a germ line mutation and not found with the somatic workflow) and there are really not much value added from the RNASeq data. Probably more mutations were found in the publications, but filtered out as unimportant.
+<br/><br/>
+
+<br/>
+<br/>
+
+<br/>
+<br/>
+-->
+
+The mutations found from RNASeq are limited to known cancer mutations and read depth coverage. In addition we got hold of an unpublished data set from targeted gene panel sequencing for which there was already done variant-calling. Together the two data-sets cover the most likely driver mutations, but they are not useful to assess the genome wide mutation burden due to their limited coverage.
+
+Here are the mutations found from the gene panel.
+
+```{r fig.height=10, fig.width=10}
+
+
+muttabDNA = read_tsv("../annotation/dna_mutations.tsv") %>%
+	mutate(cell_line_dna_mut_name = CELL_LINE)
+table(muttabDNA$AV_CONSTYPE)
+	
+
+wfDNA = sa %>%
+	dplyr::filter(cell_line != "mouse") %>%
+	inner_join(muttabDNA) %>%
+	dplyr::mutate( sample=cell_line, gene=AV_GENESYM, variant_class=AV_CONSTYPE, group=hippo_group_untreated) %>%
+	dplyr::select( sample, gene, variant_class, group)
+#table(wfDNA$cell_line)
+#wfDNA$variant_class=factor(wfDNA$variant_class, levels=c("stop_gained", "missense_variant", "splice_acceptor_variant"))
+	
+
+vc = unique(wfDNA$variant_class)
+mp = brewer.pal(length(vc), "Set1")
+
+#pdf(paste0(outputdir, "/waterfallplot_dna_mutations_", ds, ".pdf"), width=15, height=20)
+#x=waterfall(wfDNA, fileType="Custom",   variant_class_order=unique(variantclasses),
+#					mainXlabel=TRUE, mainDropMut=TRUE, plotMutBurden=FALSE, plot_proportions=FALSE, sampOrder = sa$cell_line[sa$cell_line %in% wfDNA$sample], mainPalette=mp)
+#x=dev.off()
+
+x=waterfall(wfDNA, fileType="Custom",   variant_class_order=unique(variantclasses),
+					mainXlabel=TRUE, mainDropMut=TRUE, plotMutBurden=FALSE, plot_proportions=FALSE, sampOrder = sa$cell_line[sa$cell_line %in% wfDNA$sample], mainPalette=mp)
+
+```
+
+The 2 individual waterfall plots are also written to file as pdfs.
+
+<br/>
+<br/>
+The data is also combined to make a combined plot and export lists to be used elsewhere.
+
+```{r}
+cols = c("sample","gene","variant_class")
+wfALL = rbind( data.frame(wfDNA[,cols], foundin="DNA", stringsAsFactors=FALSE),
+							 data.frame(wfRNA[,cols], foundin="RNA", stringsAsFactors=FALSE)) %>%
+#							 data.frame(wfPUB[,cols], foundin="PUB", stringsAsFactors=FALSE)) %>%
+	dplyr::filter(variant_class != "synonymous SNV")
+
+
+wfALL$variant_class = variantclasses[wfALL$variant_class]
+table(wfALL$variant_class)
+
+#length(unique(wfALL$gene))
+vc = unique(wfALL$variant_class)
+mp = brewer.pal(length(vc), "Set1")
+#pdf(paste0(outputdir, "/waterfallplot_combined_mutations_", ds, ".pdf"), width=15, height=25)
+pdf(paste0(outputdir, "/fig_suppl14", ".pdf"), width=15, height=25)
+x=waterfall(wfALL, fileType="Custom",   variant_class_order=unique(variantclasses),
+					mainXlabel=TRUE, mainDropMut=TRUE, plotMutBurden=FALSE, plot_proportions=FALSE, mainPalette=mp)
+x=dev.off()
+
+x=waterfall(wfALL, fileType="Custom",   variant_class_order=unique(variantclasses),
+					mainXlabel=TRUE, mainDropMut=TRUE, plotMutBurden=FALSE, plot_proportions=FALSE, mainPalette=mp)
+
+#wfRNADNAmouse = wfALL %>%
+#	dplyr::filter( foundin!="PUB" | sample=="mouse" )
+
+#mp = brewer.pal(length(unique(wfRNADNAmouse$variant_class)), "Set1")
+#pdf(paste0(outputdir, "/waterfallplot_RNASeq_DNASeq_mutations_", ds, ".pdf"), width=15, height=25)
+#x=waterfall(wfRNADNAmouse, fileType="Custom",   variant_class_order=unique(variantclasses),
+#					mainXlabel=TRUE, mainDropMut=TRUE, plotMutBurden=FALSE, plot_proportions=FALSE, mainPalette=mp)
+#x=dev.off()
+
+
+
+write_tsv(wfALL, path=paste0(outputdir, "/mutations_from_all_sources_long_format", ds, ".tsv"))
+
+
+widedf = wfALL %>%
+	dplyr::select(sample, gene) %>%
+	distinct() %>%
+	mutate(mutated = 1) %>%
+	tidyr::spread(sample, mutated, fill=0)
+
+write_tsv(widedf, path=paste0(outputdir, "/mutations_from_all_sources_wide_format", ds, ".tsv"))
+
+
+```
+
+
+##References
+
+
+Skidmore et al. 2016 GenVisR: Genomic Visualizations in R Bioinformatics 32, 3012-3014
+
+<br/>
+<br/>
+
+COSMIC<br/>
+https://cancer.sanger.ac.uk/cosmic
+
+<br/>
+<br/>
+Bruno Zeitouni et al., Charles River
+Abstract 1840, AACR Anual Meeting April 1-5, 2017
+
+<br/>
+<br/>
+https://www.snpedia.com/index.php/MC1R
+
+

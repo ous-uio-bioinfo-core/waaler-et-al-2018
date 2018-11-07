@@ -1,0 +1,756 @@
+---
+title: "Human vs. mouse comparison of results"
+author: "Vegard Nygaard"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+knit: (function(inputFile, encoding) { rmarkdown::render("human_vs_mouse.rmd", encoding="UTF8", output_file=paste0( "human_vs_mouse_", Sys.Date(),".html")) })
+---
+
+<style>
+  .main-container {
+    max-width: 2000px !important;
+  }
+</style>
+
+<br/>
+There are 18 human cell lines treated with DMSO (untreated) and G007LK. And there are one mouse cell line treated with DMSO and G007LK, WNT and G007LK+WNT. The mouse samples are done in triplicates, however here the average will be used. The Human and Mouse data are analysed separately and described in other reports. Here I will try to look for similarities between the species. 
+
+I will try this:
+
+
+* Subset on common genes and do some clustering and see where the mouse samples will fit in.
+* Look at fold change correlation in scatter-plot.
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+options(width = 1000)
+starttime = Sys.time()
+library("sleuth")
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(readr)
+library(NMF)
+nmf.options(grid.patch=TRUE)
+library(kableExtra)
+library(ggfortify)
+# setwd("~prosjekter/rprojects/krauss")
+
+usesavedobjects = TRUE
+debug=FALSE
+add = 0.1 # workaround to deal with zeros in log and division.
+remove_outliers = FALSE # two samples were taken out.
+maxgenesinheatmap=200
+maxgenesincsv = 2000
+
+ds = Sys.Date()
+outputdir = paste("output_human_vs_mouse_", ds, sep="")
+if(remove_outliers)
+	outputdir = paste0(outputdir, "_excluding_two_samples")
+if(!file.exists(outputdir))dir.create(outputdir)
+hclustdir = paste0(outputdir, "/human_vs_mouse_hclust_", ds )
+if(!file.exists(hclustdir))dir.create(hclustdir)
+articleplotsdir = paste0(outputdir, "/article_plots_", ds )
+if(!file.exists(articleplotsdir))dir.create(articleplotsdir)
+postfix=".csv"
+
+
+#mousedatadate = "2018-05-22"
+#humandatadate = "2018-05-22"
+mousedatadate = "2018-11-05"
+humandatadate = "2018-11-05"
+mousedir=paste0("../mouseanalysis/output_sleuth_mouse_", mousedatadate)
+humandir=paste0("../humananalysis/output_sleuth_human_", humandatadate)
+
+treat2baseline = data.frame(treatment = c("G007LK", "WNT", "WNT_G007LK", "WNT_G007LK"),
+														baseline = c("DMSO", "DMSO", "DMSO", "WNT"))
+treat2baseline$comparison = paste0(treat2baseline$treatment,"_vs_", treat2baseline$baseline)
+
+```
+
+
+
+```{r readsleuthoutput}
+
+human2mouse = read.table("../annotation/mart_export_human2mouse.txt", sep="\t", header=TRUE, stringsAsFactors = FALSE) %>%
+	rename(mousesymbol=Mouse.gene.name, humansymbol=Gene.name) %>%
+	mutate(mousesymbol = toupper(mousesymbol)) %>%
+	dplyr::filter(! (Mouse.homology.type=="ortholog_many2many" & mousesymbol!=humansymbol)) %>%
+#	dplyr::filter(Mouse.homology.type %in% c("ortholog_one2one", "ortholog_one2many") )%>%
+	dplyr::select(-Transcript.stable.ID) %>%
+	distinct()
+
+# human2mouse[human2mouse$humansymbol %in% gsymbols[!notin],]
+
+
+# problem genes cytokines
+# "CXCL1" "CCL12" "CXCL2"
+
+#humansleuthfn = paste0(humandir, "/sleuth_res_treatment_gene_", humandatadate,".txt")
+humansleuthfn = paste0(humandir, "/DEGtest_results_", humandatadate, "/G007LK_vs_DMSO_sleuth_results_", humandatadate,".txt")
+humansleuthdf = read.table(humansleuthfn , sep="\t", header=TRUE, stringsAsFactors = FALSE) %>% 
+	rename(foldchange=b) %>%
+	mutate(humansymbol = ext_gene)
+
+combodflist = list()
+for(i in 1:nrow(treat2baseline))
+{
+	
+	#mousesleuthdf = read.table( paste0( mousedir, "/sleuth_res_", treat2baseline$comparison[i], "_", mousedatadate,".txt"), 
+	#														sep="\t", header=TRUE, stringsAsFactors = FALSE) %>%
+	
+	mousesleuthdf = read.table( paste0( mousedir, "/mouse_sleuth_res_", treat2baseline$comparison[i], "_", mousedatadate,".txt"), 
+															sep="\t", header=TRUE, stringsAsFactors = FALSE) %>%
+	rename(mousesymbol=ext_gene, foldchange=b) %>%
+	dplyr::filter(!duplicated(mousesymbol)) %>%
+	left_join(human2mouse[, c("mousesymbol", "humansymbol")])
+	
+	combodflist[[i]] = mousesleuthdf[, c("foldchange", "humansymbol", "qval")] %>%
+		inner_join(humansleuthdf[, c("foldchange", "humansymbol")], by="humansymbol", suffix=c(".mouse", ".human")) %>%
+		dplyr::select(-humansymbol, humansymbol) %>%
+		mutate(mousecomparison=treat2baseline$comparison[i])
+}
+
+combsleuthddf = do.call("rbind", combodflist)
+
+wntgenes = c("AXIN2", "TCF7")
+hippogenes = c("AMOTL2", "CTGF", "CYR61")
+notchgenes = c("HEY1", "HEY2")
+
+chiengenes = read.csv("../annotation/chien_genes.csv", stringsAsFactors = FALSE)
+cytokinegenes = read.csv("../annotation/cytokine_genes.csv", stringsAsFactors = FALSE)
+#focusgenes = c(wntgenes, hippogenes, notchgenes)
+
+```
+
+<br/>
+<br/>
+
+## Clustering of the mouse samples among the human
+
+```{r read_data_sets_for_clustring}
+
+# mousechangefn = paste0( mousedir, "/sample_vs_gene_tpm_log2change_mean_" , mousedatadate,".csv")
+mousechangefn = paste0( mousedir, "/mouse_sample_vs_gene_tpm_log2change_mean_" , mousedatadate,".csv")
+mousechangedf =read.csv( mousechangefn, stringsAsFactors = FALSE) %>%
+	rename(mousesymbol=symbol) %>%
+	dplyr::filter(!duplicated(mousesymbol)) %>%
+	left_join(human2mouse[, c("mousesymbol", "humansymbol")]) %>%
+	dplyr::filter(!is.na(humansymbol)) %>%
+	dplyr::filter(!duplicated(humansymbol)) %>%
+	dplyr::select( -gene_id, -mousesymbol) %>%
+	rename_at(vars(-humansymbol), funs(paste0("Mm_", .)))
+
+humanchangefn = paste0( humandir, "/sample_vs_gene_tpm_log2change_", humandatadate,".csv")
+humanchangedf =read.csv(humanchangefn , stringsAsFactors = FALSE) %>%
+	rename(humansymbol=symbol) %>%
+	dplyr::filter(!duplicated(humansymbol)) %>%
+	dplyr::filter(!is.na(humansymbol)) %>%
+	dplyr::select( -gene_id) %>%
+	rename_at(vars(-humansymbol), funs(paste0("Hs_", .)))
+
+changemat = humanchangedf %>%
+	inner_join(mousechangedf)
+rownames(changemat) = changemat$humansymbol
+sumtpmmat = as.matrix(changemat[, grepl("sumTPM", colnames(changemat))])
+changemat = as.matrix(changemat[, grepl("change", colnames(changemat))])
+
+# mousesamplevsgenetpmfv = paste0( mousedir, "/sample_vs_gene_tpm_" , mousedatadate,".csv")
+mousesamplevsgenetpmfv = paste0( mousedir, "/mouse_sample_vs_gene_tpm_" , mousedatadate,".csv")
+mousedf =read.csv(mousesamplevsgenetpmfv , stringsAsFactors = FALSE) %>%
+	rename(mousesymbol=symbol) %>%
+	dplyr::filter(!duplicated(mousesymbol)) %>%
+	left_join(human2mouse[, c("mousesymbol", "humansymbol")]) %>%
+	dplyr::filter(!is.na(humansymbol)) %>%
+	dplyr::filter(!duplicated(humansymbol)) %>%
+	dplyr::select( -gene_id, -mousesymbol) %>%
+	rename_at(vars(-humansymbol), funs(paste0("Mm_", .)))
+
+humandf =read.csv( paste0( humandir, "/sample_vs_gene_tpm_", humandatadate,".csv"), stringsAsFactors = FALSE) %>%
+	rename(humansymbol=symbol) %>%
+	dplyr::filter(!duplicated(humansymbol)) %>%
+	dplyr::filter(!is.na(humansymbol)) %>%
+	dplyr::select( -gene_id) %>%
+	rename_at(vars(-humansymbol), funs(paste0("Hs_", .)))
+
+tpmmat = humandf %>%
+	inner_join(mousedf)
+rownames(tpmmat) = tpmmat$humansymbol
+tpmmat = log2(as.matrix(tpmmat[,-1])+add)
+datamat = cbind(tpmmat, changemat)
+
+
+#sa from file not used here = read.csv("../humananalysis/sa.csv", stringsAsFactors = FALSE)
+#mutations =  read.csv("../annotation/pub_mutations.csv", stringsAsFactors = FALSE) %>%
+#	mutate(cell_line = make.names(cell_line)) %>%
+#	rename(stage=Stage)
+	
+cellline_annotation = read_csv("../annotation/cellline_annotation.csv") %>%
+	mutate(cell_line = make.names(cell_line))
+
+sa = data.frame(colname=c(colnames(changemat), colnames(tpmmat)), 
+								type=c( rep("change", ncol(changemat)), rep("TPM", ncol(tpmmat)) ),
+								species=NA, stringsAsFactors = FALSE)
+sa$species[grepl("Mm",sa$colname )] = "mouse"
+sa$species[grepl("Hs",sa$colname )] = "human"
+sa = sa %>%
+	mutate(cell_line=gsub("Hs_|.change|.G007.LK|.DMSO", "", colname))
+sa$cell_line[sa$species=="mouse"]="mouse"
+sa = sa %>%
+#	left_join(mutations) %>%
+	left_join(cellline_annotation) %>%
+	rename(stage=Stage)
+
+## Take out two samples
+if(remove_outliers)
+{
+	sa = sa %>%
+	dplyr::filter(sa$hippo_group_untreated != "outlier")
+}
+
+
+```
+
+
+Subsets of samples which will be used to cluster by:
+
+```{r samplesubsets}
+samplesubsets = list()
+samplesubsets$subsetname = c()
+samplesubsets$description = c()
+samplesubsets$colnames = list()
+
+subname = "untreated_v1"
+samplesubsets$subsetname[[subname]] = subname
+samplesubsets$description[[subname]] = "DMSO"
+a = sa$type=="TPM"
+b = grepl("DMSO", sa$colname)
+samplesubsets$colnames[[subname]] = sa$colname[a & b]
+
+
+subname = "untreated_v2"
+samplesubsets$subsetname[[subname]] = subname
+samplesubsets$description[[subname]] = "DMSO and also WNT for mouse"
+a = sa$type=="TPM" 
+b = grepl("DMSO", sa$colname)
+c = grepl("WNT", sa$colname) & sa$species=="mouse" & !grepl("WNT_G007", sa$colname)
+samplesubsets$colnames[[subname]] = sa$colname[a & (b | c)]
+
+subname = "treated_v1"
+samplesubsets$subsetname[[subname]] = subname
+samplesubsets$description[[subname]] = "G007LK and also WNT_G007LK for mouse"
+a = sa$type=="TPM" 
+b = grepl("G007", sa$colname)
+samplesubsets$colnames[[subname]] = sa$colname[a & b]
+
+subname = "treated_v2"
+samplesubsets$subsetname[[subname]] = subname
+samplesubsets$description[[subname]] = "G007LK and also WNT_G007LK and WNT for mouse"
+a = sa$type=="TPM" 
+b = grepl("G007", sa$colname)
+c = grepl("WNT", sa$colname) & sa$species=="mouse" & !grepl("WNT_G007", sa$colname)
+samplesubsets$colnames[[subname]] = sa$colname[a & (b | c)]
+
+subname = "change"
+samplesubsets$subsetname[[subname]]= subname
+samplesubsets$description[[subname]] = "G007LK/DMSO and also the WNT-G007LK/WNT comparisons for mouse"
+a = sa$type=="change" & sa$species=="human"
+b = sa$colname %in% c("Mm_G007LK_vs_DMSO_change", "Mm_WNT_G007LK_vs_WNT_change")
+samplesubsets$colnames[[subname]] = sa$colname[a | b]
+
+kable(as.data.frame(samplesubsets[c("subsetname", "description")]), row.names=FALSE)
+
+```
+
+<br/>
+<br/>
+
+Subsets of genes which will be used to cluster by:
+
+```{r genesubsets}
+genesubsets = list()
+genesubsets$subsetname = c()
+genesubsets$description = c()
+genesubsets$symbols = list()
+genesubsets$excludeinsampletype = list()
+
+# make sure combsleuthddf is sorted by pval and mousecoparison
+combsleuthddf = combsleuthddf %>% 
+	arrange(qval)
+# 
+# subsetname = "expressed_genes_v1"
+# genesubsets$subsetname[[subsetname]] = subsetname
+# genesubsets$description[[subsetname]] = "more than 1 TPM in over half the samples"
+# a = rowSums(tpmmat > 1) > (ncol(tpmmat)/2)
+# genesubsets$symbols[[subsetname]] = rownames(tpmmat)[a]
+# genesubsets$excludeinsampletype[[subsetname]] = c("treated", "changed")
+# 
+# subsetname = "expressed_genes_change_v1"
+# genesubsets$subsetname[[subsetname]] = subsetname
+# genesubsets$description[[subsetname]] = "more than 100 TPM in sum for the treated/untreated sample in over 80% the comparisons"
+# a = rowSums(sumtpmmat > 100) > (ncol(sumtpmmat) * 0.8)
+# genesubsets$symbols[[subsetname]] = rownames(tpmmat)[a]
+# genesubsets$excludeinsampletype[[subsetname]] =c("untreated", "treated")
+# 
+# subsetname = "expressed_genes_change_v2"
+# genesubsets$subsetname[[subsetname]] = subsetname
+# genesubsets$description[[subsetname]] = "more than 200 TPM in sum for the treated/untreated sample in all the comparisons"
+# a = rowSums(sumtpmmat > 200) >= (ncol(sumtpmmat) * 1)
+# genesubsets$symbols[[subsetname]] = rownames(tpmmat)[a]
+# genesubsets$excludeinsampletype[[subsetname]] =c("untreated", "treated")
+# 
+# subsetname = "expressed_genes__change_v3"
+# genesubsets$subsetname[[subsetname]] = subsetname
+# genesubsets$description[[subsetname]] = "more than 700 TPM in sum for the treated/untreated sample in all the comparisons"
+# a = rowSums(sumtpmmat > 700) >= (ncol(sumtpmmat) * 1)
+# genesubsets$symbols[[subsetname]] = rownames(tpmmat)[a]
+# genesubsets$excludeinsampletype[[subsetname]] =c("untreated", "treated")
+
+subsetname = "top100human"
+genesubsets$subsetname[[subsetname]] = subsetname
+genesubsets$description[[subsetname]] = "in the top 100 human G007LK vs DMSO DEGs"
+a = rownames(tpmmat) %in% humansleuthdf$humansymbol[1:100]
+genesubsets$symbols[[subsetname]] = rownames(tpmmat)[a]
+
+subsetname = "top100mouse_v1"
+genesubsets$subsetname[[subsetname]] = subsetname
+genesubsets$description[[subsetname]] = "in the top 100 mouse G007LK vs DMSO DEGs "
+a = rownames(tpmmat) %in% combsleuthddf$humansymbol[combsleuthddf$mousecomparison=="G007LK_vs_DMSO"][1:100]
+genesubsets$symbols[[subsetname]] = rownames(tpmmat)[a]
+
+subsetname = "top100mouse_v2"
+genesubsets$subsetname[[subsetname]] = subsetname
+genesubsets$description[[subsetname]] = "in the top 100 mouse WNT_G007LK vs WNT DEGs"
+a = rownames(tpmmat) %in% combsleuthddf$humansymbol[combsleuthddf$mousecomparison=="WNT_G007LK_vs_WNT"][1:100]
+genesubsets$symbols[[subsetname]] = rownames(tpmmat)[a]
+
+subsetname = "WNT"
+gsymbols = c(wntgenes)
+genesubsets$subsetname[[subsetname]] = subsetname
+genesubsets$description[[subsetname]] = paste(gsymbols, collapse=",")
+a = rownames(tpmmat) %in% gsymbols
+genesubsets$symbols[[subsetname]] = rownames(tpmmat)[a]
+
+subsetname = "HIPPO"
+gsymbols = c(hippogenes)
+genesubsets$subsetname[[subsetname]] = subsetname
+genesubsets$description[[subsetname]] = paste(gsymbols, collapse=",")
+a = rownames(tpmmat) %in% gsymbols
+genesubsets$symbols[[subsetname]] = rownames(tpmmat)[a]
+
+
+subsetname = "WNT_HIPPO"
+gsymbols = c(wntgenes, hippogenes)
+genesubsets$subsetname[[subsetname]] = subsetname
+genesubsets$description[[subsetname]] = paste(gsymbols, collapse=",")
+a = rownames(tpmmat) %in% gsymbols
+genesubsets$symbols[[subsetname]] = rownames(tpmmat)[a]
+
+	
+subsetname = "WNT_HIPPO_NOTCH"
+gsymbols = c(wntgenes, hippogenes, notchgenes)
+genesubsets$subsetname[[subsetname]] = subsetname
+genesubsets$description[[subsetname]] = paste(gsymbols, collapse=",")
+a = rownames(tpmmat) %in% gsymbols
+genesubsets$symbols[[subsetname]] = rownames(tpmmat)[a]
+
+subsetname = "Chien_genes"
+gsymbols = chiengenes$symbol
+genesubsets$subsetname[[subsetname]] = subsetname
+genesubsets$description[[subsetname]] = paste("29 genes described by Chien et al.")
+a = rownames(tpmmat) %in% gsymbols
+genesubsets$symbols[[subsetname]] = rownames(tpmmat)[a]
+
+subsetname = "Cytokine_genes"
+gsymbols = cytokinegenes$symbol
+genesubsets$subsetname[[subsetname]] = subsetname
+genesubsets$description[[subsetname]] = paste("32 genes described as cytokins.")
+a = rownames(tpmmat) %in% gsymbols
+genesubsets$symbols[[subsetname]] = rownames(tpmmat)[a]
+
+subsetname = "MITF_WNT5A_DKK1_DKK3"
+gsymbols = c("MITF", "WNT5A", "DKK1", "DKK3")
+genesubsets$subsetname[[subsetname]] = subsetname
+genesubsets$description[[subsetname]] = paste(gsymbols, collapse=",")
+genesubsets$symbols[[subsetname]] = gsymbols
+
+subsetname = "MITF_and_HIPPO"
+gsymbols = c("MITF", hippogenes)
+genesubsets$subsetname[[subsetname]] = subsetname
+genesubsets$description[[subsetname]] = "MITF in comparison with the HIPPO genes"
+genesubsets$symbols[[subsetname]] = gsymbols
+
+
+subsetname = "MITF_and_HIPPO_and_more"
+gsymbols = c("MITF", hippogenes, "WNT5A", "DKK1", "DKK3")
+genesubsets$subsetname[[subsetname]] = subsetname
+genesubsets$description[[subsetname]] = "MITF and in comparison with the HIPPO genes and a few more"
+genesubsets$symbols[[subsetname]] = gsymbols
+
+
+# AMOTL2, CTGF og CYR61 vs MITF
+
+
+kable(as.data.frame(genesubsets[c("subsetname", "description")]), row.names=FALSE)
+
+```
+
+
+`r length(samplesubsets$subsetname)` subsets of samples and `r length(genesubsets$subsetname)` subsets of genes will be a total of `r length(genesubsets$subsetname) * length(samplesubsets$subsetname)` combinations. But there are more combinations added later since the gene filter based on sum of TMP across many samples dependes on the sample selection and is calculated when needed.
+<br/>
+<br/>
+Only a few of the plots will be part of the article draft.
+
+```{r plots_in_paper}
+
+paperplotsdf = read_csv("samplesetname,genesetname,articlename,pdf,csv,description
+untreated_v1,expressed_genes_TPM_v1,fig_suppl13b,1,0,
+untreated_v1,expressed_genes_TPM_v2,fig_suppl13c,1,0,
+untreated_v1,Chien_genes,fig_suppl13d,1,0,
+change,WNT_HIPPO,fig_4d,0,1,
+change,expressed_genes_change_v1,fig_suppl17b,1,0,
+change,expressed_genes_change_v2,fig_suppl17c,1,0,
+change,top100mouse_v1,fig_suppl18a,1,0,
+change,top100human,fig_suppl18b,1,0,
+untreated_v1,WNT,fig_suppl13a,1,0,
+untreated_v1,HIPPO,fig_4a,1,0,
+untreated_v2,Cytokine_genes,fig_suppl19b,1,0,
+change,Cytokine_genes,fig_suppl19c,1,0,
+untreated_v1,MITF_and_HIPPO_and_more,fig_suppl13f,1,0,
+change,MITF_and_HIPPO_and_more,fig_suppl17e,1,0,
+untreated_v1,MITF_and_HIPPO,fig_suppl13e,1,0,
+change,MITF_and_HIPPO,fig_suppl17d,1,0,
+")
+
+kable(paperplotsdf)
+```
+
+<br/>
+<br/>
+
+```{r plot_hclust_global1}
+
+#humanmaousepdf = paste0(outputdir, "/human_vs_mouse_hclust_", ds, ".pdf")
+
+#pdf(humanmaousepdf)
+plotcount=1
+for(isample in 1:length(samplesubsets$subsetname))
+{
+
+	sname = samplesubsets$subsetname[isample]
+	#print(sname)
+	sset = samplesubsets$colnames[[sname]]
+	samplesubmat = datamat[, sset]
+	
+	thisgenesubsets = genesubsets
+	if(sname=="change")
+	{
+		idx = colnames(changemat) %in% colnames(samplesubmat)
+		subsetname = "expressed_genes_change_v1"
+		thisgenesubsets$subsetname[[subsetname]] = subsetname
+		thisgenesubsets$description[[subsetname]] = "more than 100 TPM in sum for the treated+untreated sample in over 80% the comparisons"
+		a = rowSums(sumtpmmat[,idx] > 100) > (ncol(sumtpmmat[,idx]) * 0.8)
+		thisgenesubsets$symbols[[subsetname]] = rownames(tpmmat)[a]
+		
+		subsetname = "expressed_genes_change_v2"
+		thisgenesubsets$subsetname[[subsetname]] = subsetname
+		thisgenesubsets$description[[subsetname]] = "more than 200 TPM in sum for the treated+untreated sample in all the comparisons"
+		a = rowSums(sumtpmmat[,idx] > 200) >= (ncol(sumtpmmat[,idx]) * 1)
+		thisgenesubsets$symbols[[subsetname]] = rownames(tpmmat)[a]
+		
+		subsetname = "expressed_genes_change_v3"
+		thisgenesubsets$subsetname[[subsetname]] = subsetname
+		thisgenesubsets$description[[subsetname]] = "more than 700 TPM in sum for the treated+untreated sample in all the comparisons"
+		a = rowSums(sumtpmmat[,idx] > 700) >= (ncol(sumtpmmat[,idx]) * 1)
+		thisgenesubsets$symbols[[subsetname]] = rownames(tpmmat)[a]
+		
+	}else{
+			
+		idx = colnames(tpmmat) %in% colnames(samplesubmat)
+		subsetname = "expressed_genes_TPM_v1"
+		mintpm=1
+		thisgenesubsets$subsetname[[subsetname]] = subsetname
+		thisgenesubsets$description[[subsetname]] = paste0("more than ", mintpm," TPM in over half the samples")
+		a = rowSums(tpmmat[,idx] > mintpm) > (ncol(tpmmat[,idx])/2)
+		thisgenesubsets$symbols[[subsetname]] = rownames(tpmmat)[a]
+		
+		mintpm=250
+		subsetname = "expressed_genes_TPM_v2"
+		thisgenesubsets$subsetname[[subsetname]] = subsetname
+		thisgenesubsets$description[[subsetname]] = paste0("more than ", mintpm," TPM in over half the samples")
+		a = rowSums(tpmmat[,idx] > log2(mintpm)) > (ncol(tpmmat[,idx])/2)
+		thisgenesubsets$symbols[[subsetname]] = rownames(tpmmat)[a]
+		
+		mintpm=750
+		subsetname = "expressed_genes_TPM_v3"
+		thisgenesubsets$subsetname[[subsetname]] = subsetname
+		thisgenesubsets$description[[subsetname]] = paste0("more than ", mintpm," TPM in over half the samples")
+		a = rowSums(tpmmat[,idx] > log2(mintpm)) > (ncol(tpmmat[,idx])/2)
+		thisgenesubsets$symbols[[subsetname]] = rownames(tpmmat)[a]
+	}
+	
+	
+	
+	for(igene in 1:length(thisgenesubsets$subsetname))
+	{
+		
+		gname = thisgenesubsets$subsetname[igene]
+		#print(gname)
+		gset = thisgenesubsets$symbols[[gname]]
+		submat = samplesubmat[gset,]
+		submat = submat[apply(submat, MARGIN=1, FUN=var)!=0,] # take out zero variance rows (i.e no expression)
+		colnames(submat) = gsub(".change", "", colnames(submat))
+		subsa = sa[match(sset, sa$colname),]
+		
+		if(grepl("change", sname))
+		{
+			
+			# cpalette =  colorRampPalette(c( "blue", "yellow", "red"), 
+			#											 bias=1, 
+			#											 space="rgb")(n = 50)
+			# cpalette = c(cpalette[1:15], cpalette[seq.int(16, 35, 3)], cpalette[36:50])
+			
+			breaks=0
+			cpalette="-RdYlBu2:100" # same colors as for TPM values
+			zscorescaling="none"
+			valuedescription = "log2 of G007LK/DMSO TPM"
+		}else{
+			#cpalette =  colorRampPalette(c("green", "black", "red"), 
+			#											 bias=1, 
+			#											 space="rgb")(n = 50)
+			cpalette="-RdYlBu2:100"
+			breaks=NA
+			zscorescaling="row"
+			valuedescription = "log2 of TPM"
+		}
+		
+		if(debug)
+		{
+			if(nrow(submat)>1000)
+				submat = submat[sample(1:nrow(submat), 1000),]
+		}
+		cellheight = 1/nrow(submat)
+		pdfheight=7 # default one page
+		plotlegend=FALSE
+		if(nrow(submat)<=maxgenesinheatmap)
+		{
+			if(nrow(submat) <= 20)
+			{
+					cellheight=10
+			}else{
+				cellheight=3
+			}
+			
+			#if(nrow(submat) * cellheight > 250)
+			#	cellheight = 250/nrow(submat)
+			
+			plotlegend=TRUE
+			pdfheight=3.5 +  (nrow(submat) * cellheight)/72 # 72 pixels per inch
+			if(pdfheight<7)pdfheight=7
+			#print(paste0("pdfheight ", pdfheight))
+		}
+		
+		undertext = paste0( "samples: ", samplesubsets$description[isample], "\n",
+											 "genes: ", thisgenesubsets$description[igene],  "\n",
+												"value: ", valuedescription,  "\n",
+												"zscorecolors: ", zscorescaling)
+		plotnumber = sprintf("%02d", plotcount)
+		plotname = paste0("hclust",plotcount, "_", sname, "_",gname )
+		
+		pdffn = paste0( hclustdir, "/hclust_", plotname, ".pdf") 
+		pdf( pdffn, height=pdfheight)
+		aheatmap(submat,  Colv=T, Rowv=T, 
+				 na.color="black",
+				 color = cpalette,
+				 breaks=breaks,
+				 scale=zscorescaling,
+				 annCol = subsa[,c("species", "stage", "hippo_group_untreated"), drop=FALSE],
+				 main=paste0(plotcount, "_", sname, ", ", gname, ", genes=", nrow(submat)),
+				 border_color=NA, 
+				 cellheight=cellheight,
+				 cexCol=0.75,
+				 treeheight = 30,
+				 legend = TRUE,
+				 sub=undertext)
+		kast=dev.off()
+		csvfn = paste0(hclustdir, "/matrix_", plotname, ".csv")
+		if(nrow(submat)<=maxgenesincsv)
+			write.csv(submat, file=csvfn, row.names=TRUE)
+		plotcount = plotcount +1
+		
+		a = paperplotsdf$samplesetname==sname & paperplotsdf$genesetname==gname
+		if(sum(a)==1)
+		{
+			#if(paperplotsdf$pdf[a])
+			if(TRUE)
+			{
+				articlefn = paste0(articleplotsdir, "/", paperplotsdf$articlename[a], ".pdf")
+				file.copy(pdffn, articlefn, overwrite=TRUE)	
+			}
+			#if(paperplotsdf$csv[a])
+			if(TRUE & nrow(submat)<=maxgenesincsv) # dont provide matrix when heatmap is not plotted
+			{
+				articlefn = paste0(articleplotsdir, "/", paperplotsdf$articlename[a], ".csv")
+				file.copy(csvfn, articlefn, overwrite=TRUE)	
+			}
+		}
+	}
+}
+# kast=dev.off()
+
+
+
+```
+
+All combinations are plotted as hierarchiacal clusters to files in folder  <b>`r hclustdir`</b>. The input matrix for each plot is also generated.
+
+<br/>
+<br/>
+
+## Extra
+
+
+```{r mitfuncluster}
+	gname = "MITF_and_HIPPO_and_more"
+	sname = "change"
+	addmat = changemat[genesubsets$symbols[[gname]],samplesubsets$colnames[[sname]] ]
+	addmat = addmat[ , order(addmat["MITF",])]
+	
+	cpalette="-RdYlBu2:100"
+	breaks=NA
+	cellheight=10
+	#zscorescaling="row"
+	scoretype = c(log2change="none", zscoreoflog2change="row")
+	hippolowhighplotfn =  paste0(articleplotsdir , "/fig_suppl17e.pdf")
+	pdf( hippolowhighplotfn, height=pdfheight)
+	for(st in c(2))
+	{
+		aheatmap(addmat,  Colv=NA, Rowv=NA, 
+				 na.color="black",
+				 color = cpalette,
+				 breaks=breaks,
+				 scale=scoretype[st],
+				 annCol = sa[match(colnames(addmat), sa$colname),c("species", "stage", "hippo_group_untreated")],
+				 main=paste0(gname, " un-clustered \nsorted by MITF change"),
+				 border_color=NA, 
+				 cellheight=cellheight,
+				 cexCol=0.75,
+				 treeheight = 30,
+				 legend = TRUE,
+				 sub=paste0( names(scoretype)[st])
+				 	)
+	
+	}	
+	kast=dev.off()
+		
+```
+
+
+## Foldchange correlation, Human vs. Mouse
+
+Both the human samples and the mouse samples are analyzed in sleuth for DEGs. 
+For the human cell lines, the treatment vs baseline is always GL007 vs DMSO, while for the mouse there are 4 alternative combinations:
+
+```{r treat2baselinedf}
+
+	kable(treat2baseline)
+
+```
+
+
+I will make direct scatter-plots between the fold-change found in human and each of the 4 mouse tests.
+
+
+```{r corr1}
+
+ggplot(combsleuthddf, aes(x=foldchange.human, y=foldchange.mouse )) +
+	geom_point(size=1) +
+	geom_smooth(method="lm", se=FALSE) +
+	ggtitle("Human FC vs Mouse FC, all common genes") +
+	xlab("Foldchange human is always G007LK vs DMSO") +
+	ylab("Foldchange mouse vary") + 
+	facet_wrap(~mousecomparison)
+
+```
+
+Using all common genes, the fold changes do not seem to agree. The regression line claim a small correlation. For the y-axis the same human FCs are used in all plots, while the different samples are used for the mouse FC as seen in the titles.
+
+<br/>
+<br/>
+
+```{r corr2}
+
+# topn = 100
+
+sname = "top100human"
+combsleuthddf %>%
+	dplyr::filter(humansymbol %in% genesubsets$symbols[[sname]]) %>%
+	ggplot(aes(x=foldchange.human, y=foldchange.mouse )) +
+	geom_point(size=1) +
+	geom_smooth(method="lm", se=FALSE) +
+	ggtitle( paste0("Human FC vs Mouse FC,", genesubsets$description[[sname]])) +
+	xlab("Foldchange human is always G007LK vs DMSO") +
+	ylab("Foldchange mouse vary") + 
+	facet_wrap(~mousecomparison)
+
+sname = "top100mouse_v1"
+combsleuthddf %>%
+	dplyr::filter(humansymbol %in% genesubsets$symbols[[sname]]) %>%
+	ggplot(aes(x=foldchange.human, y=foldchange.mouse )) +
+	geom_point(size=1) +
+	geom_smooth(method="lm", se=FALSE) +
+	ggtitle( paste0("Human FC vs Mouse FC, top ", genesubsets$description[[sname]])) +
+	xlab("Foldchange human is always G007LK vs DMSO") +
+	ylab("Foldchange mouse vary") + 
+	facet_wrap(~mousecomparison)
+
+```
+
+
+Using a small subset of mostly changed genes in one species does not improve the correlation that much.
+
+<br/>
+<br/>
+
+```{r corr3}
+
+sname = "WNT_HIPPO"
+combsleuthddf %>%
+	dplyr::filter(humansymbol %in% genesubsets$symbols[[sname]]) %>%
+	ggplot(aes(x=foldchange.human, y=foldchange.mouse, label=humansymbol)) +
+	geom_smooth(method="lm", se=FALSE) +
+	#geom_point(size=3) +
+	geom_text() +
+	ggtitle( genesubsets$description[[sname]]) +
+	xlab("Foldchange human is always G007LK vs DMSO") +
+	ylab("Foldchange mouse vary") + 
+	facet_wrap(~mousecomparison, scales="free")
+
+```
+
+
+<br/>
+<br/>
+
+
+##References
+
+
+```{r}
+
+print(sessionInfo())
+
+
+```
+
+
+
+
