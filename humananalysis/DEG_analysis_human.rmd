@@ -39,6 +39,7 @@ nmf.options(grid.patch=TRUE)
 set.seed(100)
 
 
+
 ds = Sys.Date()
 usesavedobjects = TRUE
 outputdir = paste("output_sleuth_human_", ds, sep="")
