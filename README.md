@@ -56,5 +56,37 @@ ouput from "find . -name fig*.pdf"
 There are figures and list that did not make it to the paper, but still is in this repository.
 
 
+## Software used
 
+kallisto v0.44
+Bray, N.L., Pimentel, H., Melsted, P. & Pachter, L. Near-optimal probabilistic RNA-seq quantification. Nat Biotechnol 34, 525-527 (2016).
+
+sleuth v0.29
+Pimentel, H., Bray, N.L., Puente, S., Melsted, P. & Pachter, L. Differential analysis of RNA-seq incorporating quantification uncertainty. Nat Methods 14, 687-690 (2017).
+
+NMF_0.23.6
+Gaujoux, R. & Seoighe, C. A flexible R package for nonnegative matrix factorization. BMC Bioinformatics 11, 367 (2010).
+
+HISAT2 v2.1.0
+Kim, D., Langmead, B. & Salzberg, S.L. HISAT: a fast spliced aligner with low memory requirements. Nature Methods 12, 357 (2015).
+
+VarDict v1.2
+Lai, Z., et al. VarDict: a novel and versatile variant caller for next-generation sequencing in cancer research. Nucleic Acids Research 44, e108-e108 (2016).
+
+ANNOVAR v2017-07-17
+Wang, K., Li, M. & Hakonarson, H. ANNOVAR: functional annotation of genetic variants from high-throughput sequencing data. Nucleic Acids Research 38, e164-e164 (2010).
+
+R version 3.4.2
+R Core Team (2013). R: A language and environment for statistical
+computing. R Foundation for Statistical Computing, Vienna, Austria.
+URL http://www.R-project.org/.
+ 
+
+## Databases
+
+Ensembl
+Kinsella, R.J., et al. Ensembl BioMarts: a hub for data retrieval across taxonomic space. Database (Oxford) 2011, bar030 (2011).
+
+COSMIC v82
+Forbes, S.A., et al. COSMIC: somatic cancer genetics at high-resolution. Nucleic Acids Research 45, D777-D783 (2017).
 
