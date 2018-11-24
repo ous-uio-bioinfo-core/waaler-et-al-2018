@@ -559,6 +559,7 @@ dge <- calcNormFactors(dge, method = "TMM")
 
 sa$group_response_treatment = paste0("HIPPO", sa$hippo_group_untreated, "_", sa$treatment)
 #  using dupcorr for cell line, see https://support.bioconductor.org/p/59700/
+# the design is similar to the one in limma user guide 9.7 Multi-level Experiments
 # ~0 +group_response_treatment+cell_line_safename will not work
 design <- model.matrix(~0 +group_response_treatment, data=sa)
 contr.matrix <- makeContrasts(
