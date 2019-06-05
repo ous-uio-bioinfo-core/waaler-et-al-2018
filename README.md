@@ -1,4 +1,12 @@
 # waaler-et-al-2018
+
+<b>UPDATE June 2019!</b><br/>
+The scope and content of the article has changed and the data in this repository will be used differently. The mouse data will on its own be added to an article and has been moved to its own repository. The human data will be part of a somewhat different article to be decided later. This repository should be considered obsolete and new ones should be created.
+
+<br/>
+<br/>
+<br/>
+<br/>
 R scripts and other scripts used to produce figures and tables related to RNASeq in the article "Tankyrase inhibition counteracts resistance to αPD-1 treatment in syngeneic mouse melanoma models" in preparation by Waaler et al.
 
 This part of the paper is an exploratory analysis of the RNA expression of 18 human and one mouse melanoma cell line treated with G007LK. The samples were grouped in different constellation based on known biology and observed clustering. Based on the grouping, differences in gene expression was assessed.

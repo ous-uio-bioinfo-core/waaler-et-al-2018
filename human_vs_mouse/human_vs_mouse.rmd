@@ -266,6 +266,14 @@ a = sa$type=="change" & sa$species=="human"
 b = sa$colname %in% c("Mm_G007LK_vs_DMSO_change", "Mm_WNT_G007LK_vs_WNT_change")
 samplesubsets$colnames[[subname]] = sa$colname[a | b]
 
+
+subname = "mouseonly"
+samplesubsets$subsetname[[subname]] = subname
+samplesubsets$description[[subname]] = "4 mouse, average of the 3 replicates"
+a = sa$type=="TPM" 
+b = sa$species=="mouse"
+samplesubsets$colnames[[subname]] = sa$colname[a & b]
+
 kable(as.data.frame(samplesubsets[c("subsetname", "description")]), row.names=FALSE)
 
 ```
@@ -617,6 +625,7 @@ All combinations are plotted as hierarchiacal clusters to files in folder  <b>`r
 
 ## Extra
 
+Clustring of MITF and related genes.
 
 ```{r mitfuncluster}
 	gname = "MITF_and_HIPPO_and_more"
@@ -653,6 +662,29 @@ All combinations are plotted as hierarchiacal clusters to files in folder  <b>`r
 		
 ```
 
+<br/>
+<br/>
+
+
+
+```{r mouseonly}
+
+# # plot the 4 mouse replicates
+# mousesamplevsgenetpmreplicatesfv = paste0( mousedir, "/mouse_sample_vs_gene_tpm_per_replicate_" , mousedatadate,".csv")
+# mousereplicatesdf = read.csv(mousesamplevsgenetpmreplicatesfv , stringsAsFactors = FALSE) %>%
+# 	rename(mousesymbol=symbol) %>%
+# 	dplyr::filter(!duplicated(mousesymbol)) %>%
+# 	left_join(human2mouse[, c("mousesymbol", "humansymbol")]) %>%
+# 	dplyr::filter(!is.na(humansymbol)) %>%
+# 	dplyr::filter(!duplicated(humansymbol)) %>%
+# 	dplyr::select( -gene_id, -mousesymbol) %>%
+# 	rename_at(vars(-humansymbol), funs(paste0("Mm_", .))) %>%
+# 	dplyr::select(humansymbol, everything())
+# 
+# tpmmat = log2(as.matrix(mousereplicatesdf[,-1])+add)
+# rownames(tpmmat) = mousereplicatesdf$humansymbol
+
+```
 
 ## Foldchange correlation, Human vs. Mouse
 
