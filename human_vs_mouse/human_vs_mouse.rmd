@@ -40,6 +40,9 @@ library(knitr)
 library(readr)
 library(NMF)
 nmf.options(grid.patch=TRUE)
+# NB! need# dev version of NMF (NMF_0.23.6)
+# library(devtools)
+#install_github("renozao/NMF", "devel")
 library(kableExtra)
 library(ggfortify)
 # setwd("~prosjekter/rprojects/krauss")
@@ -419,23 +422,41 @@ Only a few of the plots will be part of the article draft.
 
 ```{r plots_in_paper}
 
+# fig names for older submission.
+# paperplotsdf = read_csv("samplesetname,genesetname,articlename,pdf,csv,description
+# untreated_v1,expressed_genes_TPM_v1,fig_suppl13b,1,0,
+# untreated_v1,expressed_genes_TPM_v2,fig_suppl13c,1,0,
+# untreated_v1,Chien_genes,fig_suppl13d,1,0,
+# change,WNT_HIPPO,fig_4d,0,1,
+# change,expressed_genes_change_v1,fig_suppl17b,1,0,
+# change,expressed_genes_change_v2,fig_suppl17c,1,0,
+# change,top100mouse_v1,fig_suppl18a,1,0,
+# change,top100human,fig_suppl18b,1,0,
+# untreated_v1,WNT,fig_suppl13a,1,0,
+# untreated_v1,HIPPO,fig_4a,1,0,
+# untreated_v2,Cytokine_genes,fig_suppl19b,1,0,
+# change,Cytokine_genes,fig_suppl19c,1,0,
+# untreated_v1,MITF_and_HIPPO_and_more,fig_suppl13f,1,0,
+# change,MITF_and_HIPPO_and_more,fig_suppl17e,1,0,
+# untreated_v1,MITF_and_HIPPO,fig_suppl13e,1,0,
+# change,MITF_and_HIPPO,fig_suppl17d,1,0,
+# ")
+
 paperplotsdf = read_csv("samplesetname,genesetname,articlename,pdf,csv,description
-untreated_v1,expressed_genes_TPM_v1,fig_suppl13b,1,0,
-untreated_v1,expressed_genes_TPM_v2,fig_suppl13c,1,0,
-untreated_v1,Chien_genes,fig_suppl13d,1,0,
-change,WNT_HIPPO,fig_4d,0,1,
-change,expressed_genes_change_v1,fig_suppl17b,1,0,
-change,expressed_genes_change_v2,fig_suppl17c,1,0,
-change,top100mouse_v1,fig_suppl18a,1,0,
-change,top100human,fig_suppl18b,1,0,
-untreated_v1,WNT,fig_suppl13a,1,0,
-untreated_v1,HIPPO,fig_4a,1,0,
-untreated_v2,Cytokine_genes,fig_suppl19b,1,0,
-change,Cytokine_genes,fig_suppl19c,1,0,
-untreated_v1,MITF_and_HIPPO_and_more,fig_suppl13f,1,0,
-change,MITF_and_HIPPO_and_more,fig_suppl17e,1,0,
-untreated_v1,MITF_and_HIPPO,fig_suppl13e,1,0,
-change,MITF_and_HIPPO,fig_suppl17d,1,0,
+untreated_v1,HIPPO,fig_6a,1,0,
+change,WNT_HIPPO,fig_6d,0,1,
+untreated_v1,WNT,fig_suppl20a,1,0,
+untreated_v1,expressed_genes_TPM_v1,fig_suppl20b,1,0,
+untreated_v1,expressed_genes_TPM_v2,fig_suppl20c,1,0,
+untreated_v1,Chien_genes,fig_suppl20d,1,0,
+untreated_v1,MITF_and_HIPPO,fig_suppl20e,1,0,
+untreated_v1,MITF_and_HIPPO_and_more,fig_suppl20f,1,0,
+change,expressed_genes_change_v1,fig_suppl24b,1,0,
+change,expressed_genes_change_v2,fig_suppl24c,1,0,
+change,MITF_and_HIPPO,fig_suppl24d,1,0,
+change,MITF_and_HIPPO_and_more,fig_suppl24e,1,0,
+change,top100mouse_v1,fig_suppl25a,1,0,
+change,top100human,fig_suppl25b,1,0,
 ")
 
 kable(paperplotsdf)

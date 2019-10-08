@@ -291,7 +291,7 @@ table(wfALL$variant_class)
 vc = unique(wfALL$variant_class)
 mp = brewer.pal(length(vc), "Set1")
 #pdf(paste0(outputdir, "/waterfallplot_combined_mutations_", ds, ".pdf"), width=15, height=25)
-pdf(paste0(outputdir, "/fig_suppl14", ".pdf"), width=15, height=25)
+pdf(paste0(outputdir, "/fig_suppl21", ".pdf"), width=15, height=25)
 x=waterfall(wfALL, fileType="Custom",   variant_class_order=unique(variantclasses),
 					mainXlabel=TRUE, mainDropMut=TRUE, plotMutBurden=FALSE, plot_proportions=FALSE, mainPalette=mp)
 x=dev.off()

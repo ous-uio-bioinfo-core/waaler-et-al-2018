@@ -1,19 +1,15 @@
 # waaler-et-al-2018
 
-<b>UPDATE June 2019!</b><br/>
-The scope and content of the article has changed and the data in this repository will be used differently. The mouse data will on its own be added to an article and has been moved to its own repository. The human data will be part of a somewhat different article to be decided later. This repository should be considered obsolete and new ones should be created.
 
 <br/>
 <br/>
-<br/>
-<br/>
-R scripts and other scripts used to produce figures and tables related to RNASeq in the article "Tankyrase inhibition counteracts resistance to αPD-1 treatment in syngeneic mouse melanoma models" in preparation by Waaler et al.
+This repository contains R scripts and other scripts used to produce some of the figures and tables related to RNASeq in the article "Tankyrase inhibition sensitizes melanoma to PD-1 immune checkpoint blockade in syngeneic mouse models" in submission by Waaler et al.
 
 This part of the paper is an exploratory analysis of the RNA expression of 18 human and one mouse melanoma cell line treated with G007LK. The samples were grouped in different constellation based on known biology and observed clustering. Based on the grouping, differences in gene expression was assessed.
 
-The raw data is fastq files from illuminas RNASeq. The quantification was done using Kallisto. The r-scripts are r-markdown and provides some QC, explanations, exploratory plot and DEG test with the resulting gene lists. All scripts may not be reproducible since most of the raw and some of the processed data is not provided here.
+The raw data is fastq files from illuminas RNASeq. The quantification was done using Kallisto. The r-scripts are r-markdown and provides some QC, explanations, exploratory plot and DEG test with the resulting gene lists. All scripts may not be reproducible since most of the raw and some of the processed data is not provided here. 
 
-Short description of the important directories
+Short description of the important directories.
 
 
 ### humananalysis
@@ -41,27 +37,26 @@ The RNASeq data was also run with a restricted mutation call workflow. Known (fr
 The figures used in the article are found here:
 
 <pre>
-./human_vs_mouse/output_human_vs_mouse_2018-11-07/article_plots_2018-11-07/fig_4a.pdf
-./human_vs_mouse/output_human_vs_mouse_2018-11-07/article_plots_2018-11-07/fig_4d.pdf
-./human_vs_mouse/output_human_vs_mouse_2018-11-07/article_plots_2018-11-07/fig_suppl13a.pdf
-./human_vs_mouse/output_human_vs_mouse_2018-11-07/article_plots_2018-11-07/fig_suppl13b.pdf
-./human_vs_mouse/output_human_vs_mouse_2018-11-07/article_plots_2018-11-07/fig_suppl13c.pdf
-./human_vs_mouse/output_human_vs_mouse_2018-11-07/article_plots_2018-11-07/fig_suppl13d.pdf
-./human_vs_mouse/output_human_vs_mouse_2018-11-07/article_plots_2018-11-07/fig_suppl13e.pdf
-./human_vs_mouse/output_human_vs_mouse_2018-11-07/article_plots_2018-11-07/fig_suppl13f.pdf
-./human_vs_mouse/output_human_vs_mouse_2018-11-07/article_plots_2018-11-07/fig_suppl17b.pdf
-./human_vs_mouse/output_human_vs_mouse_2018-11-07/article_plots_2018-11-07/fig_suppl17c.pdf
-./human_vs_mouse/output_human_vs_mouse_2018-11-07/article_plots_2018-11-07/fig_suppl17d.pdf
-./human_vs_mouse/output_human_vs_mouse_2018-11-07/article_plots_2018-11-07/fig_suppl17e.pdf
-./human_vs_mouse/output_human_vs_mouse_2018-11-07/article_plots_2018-11-07/fig_suppl18a.pdf
-./human_vs_mouse/output_human_vs_mouse_2018-11-07/article_plots_2018-11-07/fig_suppl18b.pdf
-./human_vs_mouse/output_human_vs_mouse_2018-11-07/article_plots_2018-11-07/fig_suppl19b.pdf
-./human_vs_mouse/output_human_vs_mouse_2018-11-07/article_plots_2018-11-07/fig_suppl19c.pdf
+./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_6a.pdf
+./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_6d.pdf
+./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_suppl17e.pdf
+./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_suppl20a.pdf
+./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_suppl20b.pdf
+./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_suppl20c.pdf
+./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_suppl20d.pdf
+./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_suppl20e.pdf
+./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_suppl20f.pdf
+./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_suppl24b.pdf
+./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_suppl24c.pdf
+./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_suppl24d.pdf
+./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_suppl24e.pdf
+./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_suppl25a.pdf
+./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_suppl25b.pdf
 ./mutationcall/output_mutation_call_2018-11-07/fig_suppl14.pdf
 </pre>
 ouput from "find . -name fig*.pdf"
 
-There are figures and list that did not make it to the paper, but still is in this repository.
+Due to multiple version and submissions of the paper there are there are other figures and list that did not make it to the final paper, but still is in this repository.
 
 
 ## Software used
