@@ -107,7 +107,8 @@ muttabRNA %>%
 	arrange(desc(count)) %>%
 	left_join(muttabRNA[, c("matchstring", "Gene", "AAchange", "AN_ExonicFunc.refGene")]) %>%
 	distinct() %>%
-	kable()
+	kable() %>%
+  kable_styling()
 
 MC1R_RNA = read_csv( "MC1R_germline_found_in_IGV.csv")
 muttabRNA = muttabRNA %>%
@@ -124,7 +125,7 @@ Here are the individual mutations, also written to file.
 
 
 
-kable(muttabRNA)
+kable(muttabRNA) %>% kable_styling()
 
 write_tsv(muttabRNA, path=paste0(outputdir, "/mutations_from_RNASeq_", ds, ".tsv"))
 
@@ -291,7 +292,7 @@ table(wfALL$variant_class)
 vc = unique(wfALL$variant_class)
 mp = brewer.pal(length(vc), "Set1")
 #pdf(paste0(outputdir, "/waterfallplot_combined_mutations_", ds, ".pdf"), width=15, height=25)
-pdf(paste0(outputdir, "/fig_suppl21", ".pdf"), width=15, height=25)
+pdf(paste0(outputdir, "/fig_suppl22", ".pdf"), width=15, height=25)
 x=waterfall(wfALL, fileType="Custom",   variant_class_order=unique(variantclasses),
 					mainXlabel=TRUE, mainDropMut=TRUE, plotMutBurden=FALSE, plot_proportions=FALSE, mainPalette=mp)
 x=dev.off()
@@ -338,11 +339,20 @@ https://cancer.sanger.ac.uk/cosmic
 
 <br/>
 <br/>
-Bruno Zeitouni et al., Charles River
+Bruno Zeitouni et al., Charles River<br/>
 Abstract 1840, AACR Anual Meeting April 1-5, 2017
 
 <br/>
 <br/>
 https://www.snpedia.com/index.php/MC1R
+
+
+
+```{r}
+
+print(sessionInfo())
+
+
+```
 
 

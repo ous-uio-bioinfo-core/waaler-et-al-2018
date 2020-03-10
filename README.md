@@ -3,11 +3,11 @@
 
 <br/>
 <br/>
-This repository contains R scripts and other scripts used to produce some of the figures and tables related to RNASeq in the article "Tankyrase inhibition sensitizes melanoma to PD-1 immune checkpoint blockade in syngeneic mouse models" in submission by Waaler et al.
+This repository contains R scripts and other scripts used to produce some of the figures and tables derived from the sequencing data in the article "Tankyrase inhibition sensitizes melanoma to PD-1 immune checkpoint blockade in syngeneic mouse models" by Waaler et al to appear in Communications Biology 2020.
 
-This part of the paper is an exploratory analysis of the RNA expression of 18 human and one mouse melanoma cell line treated with G007LK. The samples were grouped in different constellation based on known biology and observed clustering. Based on the grouping, differences in gene expression was assessed.
+This part of the paper is an exploratory analysis of the RNA expression of 18 human and one mouse melanoma cell line treated with G007LK. The samples were grouped in different constellation based on known biology and observed clustering. Based on the grouping, differences in gene expression were assessed.
 
-The raw data is fastq files from illuminas RNASeq. The quantification was done using Kallisto. The r-scripts are r-markdown and provides some QC, explanations, exploratory plot and DEG test with the resulting gene lists. All scripts may not be reproducible since most of the raw and some of the processed data is not provided here. 
+The raw data is fastq files from Illumina RNASeq. The quantification was done using Kallisto. The r-scripts are r-markdown and provides some QC plots, explanations, exploratory plot and DEG test with the resulting gene lists. All scripts may not be reproducible since most of the raw and some of the processed data is not provided here. 
 
 Short description of the important directories.
 
@@ -25,7 +25,7 @@ r-script with some QC plots and a DEG analysis and some additional plots.
 
 
 ### human_vs_mouse
-Plots made to explore how the mouse correlates with the human cell lines. Mostly hierarchical clusters with heatmaps for subsets of genes and samples.
+Plots made to explore how the mouse correlates with the human cell lines. Mostly hierarchical clusters with heat-maps for subsets of genes and samples.
 
 
 ### mutationcall
@@ -37,25 +37,25 @@ The RNASeq data was also run with a restricted mutation call workflow. Known (fr
 The figures used in the article are found here:
 
 <pre>
-./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_6a.pdf
-./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_6d.pdf
-./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_suppl17e.pdf
-./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_suppl20a.pdf
-./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_suppl20b.pdf
-./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_suppl20c.pdf
-./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_suppl20d.pdf
-./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_suppl20e.pdf
-./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_suppl20f.pdf
-./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_suppl24b.pdf
-./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_suppl24c.pdf
-./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_suppl24d.pdf
-./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_suppl24e.pdf
-./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_suppl25a.pdf
-./human_vs_mouse/output_human_vs_mouse_2019-10-09/article_plots_2019-10-09/fig_suppl25b.pdf
-./mutationcall/output_mutation_call_2018-11-07/fig_suppl14.pdf
+./human_vs_mouse/output_human_vs_mouse_2020-03-10/article_plots_2020-03-10/fig_6a.pdf
+./human_vs_mouse/output_human_vs_mouse_2020-03-10/article_plots_2020-03-10/fig_6d.pdf
+./human_vs_mouse/output_human_vs_mouse_2020-03-10/article_plots_2020-03-10/fig_suppl21a.pdf
+./human_vs_mouse/output_human_vs_mouse_2020-03-10/article_plots_2020-03-10/fig_suppl21b.pdf
+./human_vs_mouse/output_human_vs_mouse_2020-03-10/article_plots_2020-03-10/fig_suppl21c.pdf
+./human_vs_mouse/output_human_vs_mouse_2020-03-10/article_plots_2020-03-10/fig_suppl21d.pdf
+./human_vs_mouse/output_human_vs_mouse_2020-03-10/article_plots_2020-03-10/fig_suppl21e.pdf
+./human_vs_mouse/output_human_vs_mouse_2020-03-10/article_plots_2020-03-10/fig_suppl21f.pdf
+./human_vs_mouse/output_human_vs_mouse_2020-03-10/article_plots_2020-03-10/fig_suppl24b.pdf
+./human_vs_mouse/output_human_vs_mouse_2020-03-10/article_plots_2020-03-10/fig_suppl24c.pdf
+./human_vs_mouse/output_human_vs_mouse_2020-03-10/article_plots_2020-03-10/fig_suppl24d.pdf
+./human_vs_mouse/output_human_vs_mouse_2020-03-10/article_plots_2020-03-10/fig_suppl24e.pdf
+./human_vs_mouse/output_human_vs_mouse_2020-03-10/article_plots_2020-03-10/fig_suppl25a.pdf
+./human_vs_mouse/output_human_vs_mouse_2020-03-10/article_plots_2020-03-10/fig_suppl25b.pdf
+./mutationcall/output_mutation_call_2020-03-10/fig_suppl22.pdf
 </pre>
 ouput from "find . -name fig*.pdf"
 
+The figures as they appear in the article may be cosmetically altered.
 Due to multiple version and submissions of the paper there are there are other figures and list that did not make it to the final paper, but still is in this repository.
 
 
@@ -92,4 +92,12 @@ Kinsella, R.J., et al. Ensembl BioMarts: a hub for data retrieval across taxonom
 <br/>
 COSMIC v82<br/>
 Forbes, S.A., et al. COSMIC: somatic cancer genetics at high-resolution. Nucleic Acids Research 45, D777-D783 (2017).
+
+
+
+<br/>
+<br/>
+
+Contact for this repository: vegards.email@gmail.com or 
+
 
