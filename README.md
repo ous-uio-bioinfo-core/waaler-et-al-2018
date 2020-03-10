@@ -105,6 +105,6 @@ Forbes, S.A., et al. COSMIC: somatic cancer genetics at high-resolution. Nucleic
 <br/>
 <br/>
 
-Contact for this repository: vegards.email@gmail.com or 
+Contact for this repository: vegards.email@gmail.com or ehovig@ifi.uio.no
 
 
